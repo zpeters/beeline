@@ -2,10 +2,9 @@
 //! pick an environment. It only reports actions; `App` performs them.
 
 use std::collections::BTreeSet;
-use std::fmt;
 use std::path::{Path, PathBuf};
 
-use iced::widget::{column, container, mouse_area, pick_list, row, scrollable, space, text};
+use iced::widget::{column, container, mouse_area, row, scrollable, space, text};
 use iced::{Element, Fill, Padding};
 
 use crate::collection::{self, Node};
@@ -38,6 +37,10 @@ pub enum Action {
     AddSamples(PathBuf),
     /// Opens or closes the collection menu under the collection name.
     ToggleCollectionMenu,
+    /// Opens or closes the environment menu under the environment name.
+    ToggleEnvMenu,
+    /// Moves an environment file to the Trash.
+    DeleteEnv(PathBuf),
     /// Opens a collection picked from the recents list.
     SwitchCollection(PathBuf),
     NewCollection,
@@ -61,7 +64,6 @@ pub struct Props<'a> {
     pub root: Option<&'a Path>,
     pub tree: &'a [Node],
     pub selected: Option<&'a Path>,
-    pub envs: &'a [(String, PathBuf)],
     pub env: Option<&'a str>,
     /// Folders that are open. Folders start closed, as they did in egui.
     pub expanded: &'a BTreeSet<PathBuf>,
@@ -69,27 +71,6 @@ pub struct Props<'a> {
     pub drop: Option<&'a Path>,
     /// The item being dragged. Its row is marked while the drag is on.
     pub dragging: Option<&'a Path>,
-}
-
-/// One line of the environment dropdown. The last two are actions, not
-/// environments: they never show as the selection.
-#[derive(Debug, Clone, PartialEq)]
-enum EnvChoice {
-    None,
-    Named(String),
-    New,
-    Edit,
-}
-
-impl fmt::Display for EnvChoice {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            EnvChoice::None => write!(f, "No environment"),
-            EnvChoice::Named(name) => write!(f, "{name}"),
-            EnvChoice::New => write!(f, "New environment…"),
-            EnvChoice::Edit => write!(f, "Edit this environment…"),
-        }
-    }
 }
 
 pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
@@ -119,6 +100,13 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
         return col.push(gear()).height(Fill).into();
     };
 
+    let env_name = p.env.unwrap_or("No environment");
+    col = col.push(
+        theme::button(text(format!("{env_name} ▾")).size(theme::text_px()))
+            .style(theme::text_button)
+            .on_press(Action::ToggleEnvMenu),
+    );
+
     col = col.push(
         row![
             theme::button("+ Request").on_press(Action::NewRequest(root.to_path_buf())),
@@ -126,34 +114,6 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
             theme::button("⟳").on_press(Action::Reload),
         ]
         .spacing(6),
-    );
-
-    let mut choices = vec![EnvChoice::None];
-    choices.extend(
-        p.envs
-            .iter()
-            .map(|(name, _)| EnvChoice::Named(name.clone())),
-    );
-    choices.push(EnvChoice::New);
-    if p.env.is_some() {
-        choices.push(EnvChoice::Edit);
-    }
-    let selected = Some(match p.env {
-        None => EnvChoice::None,
-        Some(name) => EnvChoice::Named(name.to_string()),
-    });
-    col = col.push(
-        row![
-            pick_list(choices, selected, |choice| match choice {
-                EnvChoice::None => Action::SelectEnv(None),
-                EnvChoice::Named(name) => Action::SelectEnv(Some(name)),
-                EnvChoice::New => Action::NewEnv,
-                EnvChoice::Edit => Action::EditEnv,
-            })
-            .style(theme::pick)
-            .width(Fill),
-        ]
-        .spacing(8),
     );
 
     let mut rows: Vec<Element<'a, Action>> = Vec::new();

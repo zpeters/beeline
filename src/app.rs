@@ -213,6 +213,8 @@ pub struct App {
     recents: Vec<PathBuf>,
     /// The collection menu, open at this point under the collection name.
     collection_menu: Option<Point>,
+    /// The environment menu, open at this point under the environment name.
+    env_menu: Option<Point>,
     /// The operating system's light or dark mode, for the System theme.
     system_mode: Mode,
     /// Set when a dialog opens that needs its name field focused.
@@ -276,6 +278,7 @@ impl App {
             settings,
             recents: Vec::new(),
             collection_menu: None,
+            env_menu: None,
             system_mode: Mode::None,
             focus_name: false,
             after_save: None,
@@ -693,8 +696,20 @@ impl App {
     }
 
     fn delete(&mut self, path: &Path) {
+        // An environment file is deleted by path, so note whether it is the
+        // selected one before the file is gone.
+        let selected_env_gone = self
+            .env
+            .clone()
+            .filter(|n| self.env_path(n).as_deref() == Some(path));
         if let Err(e) = collection::delete(path) {
             self.notify(e, true);
+            return;
+        }
+        if selected_env_gone.is_some() {
+            self.reload_tree();
+            self.select_env(None);
+            self.notify("Moved to Trash", false);
             return;
         }
         recents::forget(&mut self.recents, path);
@@ -739,10 +754,14 @@ impl App {
         use sidebar::Action;
         if !matches!(
             action,
-            Action::Enter(_) | Action::Exit(_) | Action::ToggleCollectionMenu
+            Action::Enter(_)
+                | Action::Exit(_)
+                | Action::ToggleCollectionMenu
+                | Action::ToggleEnvMenu
         ) {
             self.context = None;
             self.collection_menu = None;
+            self.env_menu = None;
         }
         match action {
             Action::OpenCollection => {
@@ -810,6 +829,13 @@ impl App {
                     None => Some(self.cursor),
                 };
             }
+            Action::ToggleEnvMenu => {
+                self.env_menu = match self.env_menu {
+                    Some(_) => None,
+                    None => Some(self.cursor),
+                };
+            }
+            Action::DeleteEnv(path) => self.modal = Some(Modal::Delete(path)),
             Action::SwitchCollection(root) => {
                 if self.collection.as_ref().is_none_or(|c| c.root != root) {
                     return self.guard(Then::OpenCollection(root));
@@ -975,6 +1001,7 @@ impl App {
             Message::CloseContext => {
                 self.context = None;
                 self.collection_menu = None;
+                self.env_menu = None;
                 Task::none()
             }
             Message::Tabs(msg) => self.tab_msg(msg),
@@ -1350,6 +1377,9 @@ impl App {
         if let Some(at) = self.collection_menu {
             layers.push(self.collection_menu_view(at));
         }
+        if let Some(at) = self.env_menu {
+            layers.push(self.env_menu_view(at));
+        }
         if let Some(modal) = &self.modal {
             layers.push(self.modal_view(modal));
         }
@@ -1363,7 +1393,6 @@ impl App {
             root: c.map(|c| c.root.as_path()),
             tree: c.map(|c| c.tree.as_slice()).unwrap_or_default(),
             selected: self.doc().and_then(|d| d.open.as_deref()),
-            envs: c.map(|c| c.envs.as_slice()).unwrap_or_default(),
             env: self.env.as_deref(),
             expanded: &self.expanded,
             drop: self.drop_folder(),
@@ -1531,6 +1560,65 @@ impl App {
                 "Move to Trash…".into(),
                 sidebar::Action::DeleteCollection(root.to_path_buf()),
             ));
+        }
+        let card = container(column(items).spacing(2))
+            .style(theme::card)
+            .padding(6)
+            .width(240);
+        let placed = container(card)
+            .padding(iced::Padding {
+                top: at.y + 12.0,
+                right: 0.0,
+                bottom: 0.0,
+                left: 12.0,
+            })
+            .width(Fill)
+            .height(Fill);
+        mouse_area(placed)
+            .on_press(Message::CloseContext)
+            .on_right_press(Message::CloseContext)
+            .into()
+    }
+
+    /// The menu under the environment name, laid out like the collection
+    /// menu: the choices first, then the actions for the selected one.
+    fn env_menu_view(&self, at: Point) -> Element<'_, Message> {
+        let item = |label: String, action: sidebar::Action| -> Element<'_, Message> {
+            theme::button(text(label).size(theme::text_px()))
+                .style(theme::text_button)
+                .width(Fill)
+                .on_press(Message::Sidebar(action))
+                .into()
+        };
+        let mut items: Vec<Element<'_, Message>> = Vec::new();
+        let none_mark = if self.env.is_none() { "✓ " } else { "" };
+        items.push(item(
+            format!("{none_mark}No environment"),
+            sidebar::Action::SelectEnv(None),
+        ));
+        if let Some(c) = &self.collection {
+            for (name, _) in &c.envs {
+                let mark = if self.env.as_deref() == Some(name.as_str()) {
+                    "✓ "
+                } else {
+                    ""
+                };
+                items.push(item(
+                    format!("{mark}{name}"),
+                    sidebar::Action::SelectEnv(Some(name.clone())),
+                ));
+            }
+        }
+        items.push(text("").into());
+        items.push(item("New environment…".into(), sidebar::Action::NewEnv));
+        if let Some(name) = &self.env {
+            items.push(item("Edit…".into(), sidebar::Action::EditEnv));
+            if let Some(path) = self.env_path(name) {
+                items.push(item(
+                    "Move to Trash…".into(),
+                    sidebar::Action::DeleteEnv(path),
+                ));
+            }
         }
         let card = container(column(items).spacing(2))
             .style(theme::card)
