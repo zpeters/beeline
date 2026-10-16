@@ -78,6 +78,8 @@ Rust/Cargo comes from your own `rustup`, not the flake.
 just              # list recipes
 just run          # launch the app
 just check        # fmt --check + clippy -D warnings + test
+just bundle-mac   # build target/release/bundle/osx/beeline.app (and a .dmg)
+just install-mac  # copy beeline.app into /Applications
 ```
 
 ## Version control

@@ -16,6 +16,8 @@
         devShells.default = pkgs.mkShell {
           packages = [
             pkgs.just
+            # Builds beeline.app from [package.metadata.bundle] (just bundle-mac).
+            pkgs.cargo-bundle
           ];
         };
       }
