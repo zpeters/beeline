@@ -144,7 +144,6 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
     });
     col = col.push(
         row![
-            text("Env").size(theme::text_px()),
             pick_list(choices, selected, |choice| match choice {
                 EnvChoice::None => Action::SelectEnv(None),
                 EnvChoice::Named(name) => Action::SelectEnv(Some(name)),
