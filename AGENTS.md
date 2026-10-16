@@ -34,12 +34,17 @@ I/O modules:
 - `collection.rs` — all filesystem access: scan, read/write requests and
   environments, create/rename, move to Trash. Tested against temp dirs.
 
-UI (egui/eframe 0.37, immediate mode; verified by build + launch):
+- `tabs.rs` — pure ordered list of open tabs with one active. No iced.
 
-- `app.rs` — app state, file actions, modals, frame layout.
-- `ui/editor.rs`, `ui/response.rs`, `ui/sidebar.rs`, `ui/mod.rs`
-  (shared key/value table). Widgets edit the state they are handed or
-  return actions; they do no I/O.
+UI (iced 0.14, Elm-style: `update` returns a `Task`, `view` builds
+`Element`s from state; verified by build + launch):
+
+- `app.rs` — app state (one `Doc` per request tab), file actions, modals,
+  frame layout.
+- `ui/editor.rs`, `ui/response.rs`, `ui/sidebar.rs`, `ui/tab_strip.rs`,
+  `ui/dialog.rs`, `ui/theme.rs`, `ui/mod.rs` (shared key/value table).
+  Widgets edit the state they are handed or return messages; they do no
+  I/O.
 
 Other:
 
@@ -55,7 +60,7 @@ Cross-project coding philosophy lives in `~/.claude/PHILOSOPHY.md` and
 **project-specific** rules only:
 
 - **Pure core, thin shell.** Request/response logic has no UI and no
-  clocks. The egui layer only renders state and forwards user actions.
+  clocks. The iced layer only renders state and forwards user actions.
 - **`#![forbid(unsafe_code)]`** at the crate root.
 - **Minimal dependencies.** Each new crate needs a reason in the commit
   message.
@@ -102,11 +107,10 @@ work is done and green.
 
 ## Before making a change
 
-- The UI is egui (immediate mode). Do not add an async runtime unless a
-  feature needs it; a blocking request on a background thread is enough.
-- egui/eframe 0.37 renamed things: `App::ui(&mut self, ui: &mut Ui, ..)`
-  replaces `update`, panels are `egui::Panel::{left,top,bottom}` and take
-  a `&mut Ui`, and `Id::new` is deprecated (`Id::unique`).
+- The UI is iced 0.14. Route every user action through a `Message`
+  variant handled in `App::update`; widgets never mutate `App` directly.
+  Do not add an async runtime unless a feature needs it; a blocking
+  request on a background thread with a oneshot channel is enough.
 - Keep `serde_json`'s `preserve_order` feature: it keeps response keys in
   server order when pretty-printing.
 - The URL holds the query string; `params` mirrors it. Disabled params

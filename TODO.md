@@ -4,8 +4,8 @@
 
 - mac packaging / install
 
-- Request tabs, copy as cURL, request history (left out of the basic
-  client on purpose).
+- Copy as cURL, request history (left out of the basic client on
+  purpose).
 
 - **Import from API docs (Paprika-style).** Browse an API documentation
   site inside the app, then parse the page into a collection of
