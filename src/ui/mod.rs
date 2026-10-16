@@ -6,4 +6,5 @@ pub mod editor;
 pub mod kv;
 pub mod response;
 pub mod sidebar;
+pub mod tab_strip;
 pub mod theme;

@@ -8,6 +8,7 @@ mod model;
 mod query;
 mod resolve;
 mod seed;
+mod tabs;
 mod ui;
 mod vars;
 

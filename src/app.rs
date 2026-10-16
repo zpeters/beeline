@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::collection::{self, Node};
 use crate::model::{Environment, KeyValue, RequestFile};
+use crate::tabs::Tabs;
+use crate::ui::tab_strip;
 use crate::ui::{dialog, editor, kv, response, sidebar, theme};
 use crate::{http, resolve, seed};
 
@@ -27,10 +29,16 @@ enum PaneKind {
 }
 
 /// What the app remembers between runs.
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
 struct SavedState {
     collection: Option<PathBuf>,
     env: Option<String>,
+    /// Files of the open tabs, in tab order. Untitled tabs are not kept.
+    #[serde(default)]
+    tabs: Vec<PathBuf>,
+    /// Index into `tabs` of the active one.
+    #[serde(default)]
+    active_tab: usize,
 }
 
 /// `~/.config/beeline/state.json`, or None when there is no home folder.
@@ -86,9 +94,53 @@ struct Notice {
 /// What to do once unsaved changes are dealt with.
 #[derive(Debug, Clone)]
 pub enum Then {
-    Open(PathBuf),
+    Close(u64),
     OpenCollection(PathBuf),
     Quit(window::Id),
+}
+
+/// One open request: its own text, file, editor state and send.
+struct Doc {
+    id: u64,
+    req: RequestFile,
+    /// The file `req` was loaded from; `None` for an untitled request.
+    open: Option<PathBuf>,
+    /// The last loaded or saved copy, for the unsaved-changes check.
+    saved: RequestFile,
+    /// The body's text, which iced edits in place. `req.body.text` mirrors it.
+    body: text_editor::Content,
+    tab: editor::Tab,
+    /// True while this request is in flight.
+    pending: bool,
+    /// Bumped on each load, so a late response for an old request is dropped.
+    generation: u64,
+    result: Option<Result<response::View, String>>,
+}
+
+impl Doc {
+    fn new(id: u64, req: RequestFile, open: Option<PathBuf>, saved: RequestFile) -> Self {
+        Self {
+            id,
+            body: text_editor::Content::with_text(&req.body.text),
+            req,
+            open,
+            saved,
+            tab: editor::Tab::default(),
+            pending: false,
+            generation: 0,
+            result: None,
+        }
+    }
+
+    fn dirty(&self) -> bool {
+        self.req != self.saved
+    }
+
+    /// Replaces the request and keeps the body editor in step with it.
+    fn replace_req(&mut self, req: RequestFile) {
+        self.body = text_editor::Content::with_text(&req.body.text);
+        self.req = req;
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -114,19 +166,10 @@ enum Modal {
 pub struct App {
     panes: pane_grid::State<PaneKind>,
     collection: Option<Collection>,
-    req: RequestFile,
-    /// The file `req` was loaded from; `None` for the scratch request.
-    open: Option<PathBuf>,
-    /// The last loaded or saved copy, for the unsaved-changes check.
-    saved: RequestFile,
-    /// The body's text, which iced edits in place. `req.body.text` mirrors it.
-    body: text_editor::Content,
-    tab: editor::Tab,
-    /// True while a request is in flight.
-    pending: bool,
-    /// Bumped on each load, so a late response for an old request is dropped.
-    generation: u64,
-    result: Option<Result<response::View, String>>,
+    /// The open requests, one tab each.
+    docs: Tabs<Doc>,
+    /// The id the next tab gets. Responses find their tab by id.
+    next_doc: u64,
     modal: Option<Modal>,
     /// Set when a dialog opens that needs its name field focused.
     focus_name: bool,
@@ -158,9 +201,12 @@ pub enum Message {
     Editor(editor::Msg),
     Response(response::Msg),
     Dialog(dialog::Msg),
+    Tabs(tab_strip::Msg),
+    NewTab,
+    CloseTab,
     Send,
     Save,
-    Sent(u64, Result<http::Response, String>),
+    Sent(u64, u64, Result<http::Response, String>),
     CloseRequested(window::Id),
     CursorMoved(Point),
     MouseReleased,
@@ -179,14 +225,8 @@ impl App {
                 b: Box::new(Configuration::Pane(PaneKind::Main)),
             }),
             collection: None,
-            req: RequestFile::default(),
-            open: None,
-            saved: RequestFile::default(),
-            body: text_editor::Content::new(),
-            tab: editor::Tab::default(),
-            pending: false,
-            generation: 0,
-            result: None,
+            docs: Tabs::default(),
+            next_doc: 0,
             modal: None,
             focus_name: false,
             after_save: None,
@@ -210,8 +250,11 @@ impl App {
                 Ok(root) if root.is_dir() => app.open_collection(root),
                 _ => app.notify(format!("Not a folder: {}", start.display()), true),
             },
-            None => match saved.collection {
-                Some(root) if root.is_dir() => app.open_collection(root),
+            None => match &saved.collection {
+                Some(root) if root.is_dir() => {
+                    app.open_collection(root.clone());
+                    app.restore_tabs(&saved);
+                }
                 _ if first_run => app.open_default_collection(),
                 _ => {}
             },
@@ -222,6 +265,46 @@ impl App {
             app.select_env(Some(name));
         }
         (app, Task::none())
+    }
+
+    /// Reopens the tabs saved for this collection. Files that are gone are
+    /// skipped.
+    fn restore_tabs(&mut self, saved: &SavedState) {
+        let mut active = None;
+        for (i, path) in saved.tabs.iter().enumerate() {
+            if path.is_file()
+                && let Ok(req) = collection::read_request(path)
+            {
+                let at = self.push_doc(req, Some(path.clone()));
+                if i == saved.active_tab {
+                    active = Some(at);
+                }
+            }
+        }
+        if let Some(at) = active {
+            self.docs.activate(at);
+        }
+    }
+
+    /// Adds a tab for `req` and makes it active. Returns its index.
+    fn push_doc(&mut self, req: RequestFile, open: Option<PathBuf>) -> usize {
+        let id = self.next_doc;
+        self.next_doc += 1;
+        let saved = req.clone();
+        self.docs.push(Doc::new(id, req, open, saved))
+    }
+
+    /// The active request, if any tab is open.
+    fn doc(&self) -> Option<&Doc> {
+        self.docs.active()
+    }
+
+    fn doc_mut(&mut self) -> Option<&mut Doc> {
+        self.docs.active_mut()
+    }
+
+    fn any_dirty(&self) -> bool {
+        self.docs.iter().any(Doc::dirty)
     }
 
     /// First run: create the Default collection under ~/Documents/beeline
@@ -245,23 +328,26 @@ impl App {
         });
     }
 
-    fn dirty(&self) -> bool {
-        self.req != self.saved
-    }
-
-    /// Replaces the request and keeps the body editor in step with it.
-    fn replace_req(&mut self, req: RequestFile) {
-        self.body = text_editor::Content::with_text(&req.body.text);
-        self.req = req;
-    }
-
     fn save_state(&self) {
         let Some(path) = state_path() else {
             return;
         };
+        // Only tabs with a file are kept. The active index counts among them.
+        let mut tabs = Vec::new();
+        let mut active_tab = 0;
+        for (i, doc) in self.docs.iter().enumerate() {
+            if let Some(file) = &doc.open {
+                if Some(i) == self.docs.active_index() {
+                    active_tab = tabs.len();
+                }
+                tabs.push(file.clone());
+            }
+        }
         let state = SavedState {
             collection: self.collection.as_ref().map(|c| c.root.clone()),
             env: self.env.clone(),
+            tabs,
+            active_tab,
         };
         if let Some(dir) = path.parent() {
             let _ = fs::create_dir_all(dir);
@@ -291,10 +377,8 @@ impl App {
                 self.env = None;
                 self.vars.clear();
                 self.env_editor = None;
-                self.open = None;
-                self.replace_req(RequestFile::default());
-                self.saved = RequestFile::default();
-                self.result = None;
+                // Tabs belong to the collection they came from.
+                self.docs.clear();
                 self.expanded.clear();
                 self.context = None;
                 self.save_state();
@@ -373,28 +457,58 @@ impl App {
         }
     }
 
-    fn load(&mut self, path: PathBuf) {
-        match collection::read_request(&path) {
-            Ok(req) => {
-                self.saved = req.clone();
-                self.replace_req(req);
-                self.open = Some(path);
-                // Drop any in-flight response; it belongs to the old request.
-                self.generation += 1;
-                self.pending = false;
-                self.result = None;
+    /// Opens `path` in a tab, or switches to its tab if it is already open.
+    fn open_tab(&mut self, path: PathBuf) {
+        if let Some(at) = self.docs.position(|d| d.open.as_ref() == Some(&path)) {
+            self.docs.activate(at);
+        } else {
+            match collection::read_request(&path) {
+                Ok(req) => {
+                    self.push_doc(req, Some(path));
+                }
+                Err(e) => {
+                    self.notify(e, true);
+                    return;
+                }
             }
-            Err(e) => self.notify(e, true),
+        }
+        self.save_state();
+    }
+
+    /// Opens a new untitled request in a tab.
+    fn new_tab(&mut self) {
+        self.push_doc(RequestFile::default(), None);
+        self.save_state();
+    }
+
+    /// Asks before closing a tab with unsaved changes; closes it otherwise.
+    fn close_tab(&mut self, id: u64) -> Task<Message> {
+        let Some(at) = self.docs.position(|d| d.id == id) else {
+            return Task::none();
+        };
+        if self.docs.get(at).is_some_and(Doc::dirty) {
+            self.docs.activate(at);
+            self.modal = Some(Modal::Unsaved(Then::Close(id)));
+            Task::none()
+        } else {
+            self.run(Then::Close(id))
         }
     }
 
-    /// Save the open request. A scratch request asks for a name instead.
+    /// Save the active request. An untitled request asks for a name instead.
     /// Returns true when the request is now saved.
     fn save(&mut self) -> bool {
-        if let Some(path) = &self.open {
-            match collection::write_request(path, &self.req) {
+        let Some(doc) = self.doc() else {
+            self.notify("Open a request first", true);
+            return false;
+        };
+        if let Some(path) = doc.open.clone() {
+            let req = doc.req.clone();
+            match collection::write_request(&path, &req) {
                 Ok(()) => {
-                    self.saved = self.req.clone();
+                    if let Some(doc) = self.doc_mut() {
+                        doc.saved = req;
+                    }
                     self.notify("Saved", false);
                     true
                 }
@@ -413,20 +527,31 @@ impl App {
         }
     }
 
-    /// Run `then` now, or ask about unsaved changes first.
+    /// Run `then` now, or ask about unsaved changes first. Quitting and
+    /// switching collections check every tab, one dialog at a time.
     fn guard(&mut self, then: Then) -> Task<Message> {
-        if self.dirty() {
-            self.modal = Some(Modal::Unsaved(then));
-            Task::none()
-        } else {
-            self.run(then)
+        let dirty = match &then {
+            Then::Close(_) => None,
+            _ => self.docs.position(Doc::dirty),
+        };
+        match dirty {
+            Some(at) => {
+                self.docs.activate(at);
+                self.modal = Some(Modal::Unsaved(then));
+                Task::none()
+            }
+            None => self.run(then),
         }
     }
 
+    /// Does `then` now, without asking again.
     fn run(&mut self, then: Then) -> Task<Message> {
         match then {
-            Then::Open(path) => {
-                self.load(path);
+            Then::Close(id) => {
+                if let Some(at) = self.docs.position(|d| d.id == id) {
+                    self.docs.close(at);
+                    self.save_state();
+                }
                 Task::none()
             }
             Then::OpenCollection(root) => {
@@ -445,7 +570,8 @@ impl App {
             NameFor::NewRequest(dir) => {
                 let path = collection::create_request(dir, text, &RequestFile::default())?;
                 self.reload_tree();
-                Ok(self.guard(Then::Open(path)))
+                self.open_tab(path);
+                Ok(Task::none())
             }
             NameFor::NewFolder(dir) => {
                 collection::create_folder(dir, text)?;
@@ -454,22 +580,22 @@ impl App {
             }
             NameFor::Rename(path) => {
                 let new = collection::rename(path, text)?;
-                if let Some(open) = &self.open
-                    && let Some(moved) = collection::moved(open, path, &new)
-                {
-                    self.open = Some(moved);
-                }
+                self.retarget(path, &new);
                 self.reload_tree();
                 Ok(Task::none())
             }
             NameFor::SaveAs(dir) => {
-                let path = collection::create_request(dir, text, &self.req)?;
-                self.open = Some(path);
-                self.saved = self.req.clone();
+                let req = self.doc().map(|d| d.req.clone()).unwrap_or_default();
+                let path = collection::create_request(dir, text, &req)?;
+                if let Some(doc) = self.doc_mut() {
+                    doc.open = Some(path);
+                    doc.saved = req;
+                }
                 self.reload_tree();
+                self.save_state();
                 self.notify("Saved", false);
                 Ok(match self.after_save.take() {
-                    Some(then) => self.run(then),
+                    Some(then) => self.guard(then),
                     None => Task::none(),
                 })
             }
@@ -488,13 +614,29 @@ impl App {
             self.notify(e, true);
             return;
         }
-        // Keep the editor's content as an unsaved scratch request.
-        if self.open.as_deref().is_some_and(|o| o.starts_with(path)) {
-            self.open = None;
-            self.saved = RequestFile::default();
+        // Keep each affected tab's content as an unsaved untitled request.
+        for doc in self.docs.iter_mut() {
+            if doc.open.as_deref().is_some_and(|o| o.starts_with(path)) {
+                doc.open = None;
+                doc.saved = RequestFile::default();
+            }
         }
+        self.save_state();
         self.reload_tree();
         self.notify("Moved to Trash", false);
+    }
+
+    /// Points every open tab that was at `from` (or inside it) at its new
+    /// place after a rename or move.
+    fn retarget(&mut self, from: &Path, to: &Path) {
+        for doc in self.docs.iter_mut() {
+            if let Some(open) = &doc.open
+                && let Some(moved) = collection::moved(open, from, to)
+            {
+                doc.open = Some(moved);
+            }
+        }
+        self.save_state();
     }
 
     fn sidebar_action(&mut self, action: sidebar::Action) -> Task<Message> {
@@ -540,11 +682,7 @@ impl App {
                 }
                 Err(e) => self.notify(e, true),
             },
-            Action::Open(path) => {
-                if self.open.as_ref() != Some(&path) {
-                    return self.guard(Then::Open(path));
-                }
-            }
+            Action::Open(path) => self.open_tab(path),
             Action::NewRequest(dir) => self.open_name(NameFor::NewRequest(dir), ""),
             Action::NewFolder(dir) => self.open_name(NameFor::NewFolder(dir), ""),
             Action::Rename(path) => {
@@ -603,11 +741,7 @@ impl App {
     fn move_item(&mut self, from: &Path, dir: &Path) {
         match collection::move_into(from, dir) {
             Ok(to) => {
-                if let Some(open) = &self.open
-                    && let Some(moved) = collection::moved(open, from, &to)
-                {
-                    self.open = Some(moved);
-                }
+                self.retarget(from, &to);
                 self.expanded.insert(dir.to_path_buf());
                 self.reload_tree();
                 self.notify(format!("Moved to \"{}\"", collection::stem(dir)), false);
@@ -640,19 +774,26 @@ impl App {
     /// Resolve on the UI thread (cheap, and errors show at once), then
     /// send on a worker thread so the UI stays responsive.
     fn send(&mut self) -> Task<Message> {
-        if self.pending || self.modal.is_some() {
+        if self.modal.is_some() {
             return Task::none();
         }
-        let resolved = match resolve::resolve(&self.req, &self.vars) {
+        let vars = &self.vars;
+        let Some(doc) = self.docs.active_mut() else {
+            return Task::none();
+        };
+        if doc.pending {
+            return Task::none();
+        }
+        let resolved = match resolve::resolve(&doc.req, vars) {
             Ok(r) => r,
             Err(e) => {
-                self.result = Some(Err(e));
+                doc.result = Some(Err(e));
                 return Task::none();
             }
         };
-        self.pending = true;
-        self.result = None;
-        let generation = self.generation;
+        doc.pending = true;
+        doc.result = None;
+        let (id, generation) = (doc.id, doc.generation);
         // A plain thread keeps the blocking HTTP call off the UI executor.
         // The oneshot channel works with any executor.
         let (tx, rx) = iced::futures::channel::oneshot::channel();
@@ -664,7 +805,7 @@ impl App {
                 rx.await
                     .unwrap_or_else(|_| Err("request thread stopped".into()))
             },
-            move |res| Message::Sent(generation, res),
+            move |res| Message::Sent(id, generation, res),
         )
     }
 
@@ -696,17 +837,30 @@ impl App {
                 self.context = None;
                 Task::none()
             }
-            Message::Sent(generation, res) => {
-                if generation == self.generation {
-                    self.pending = false;
-                    self.result = Some(res.map(response::View::new));
+            Message::Tabs(msg) => self.tab_msg(msg),
+            Message::NewTab => {
+                if self.modal.is_none() {
+                    self.new_tab();
+                }
+                Task::none()
+            }
+            Message::CloseTab => match self.docs.active().map(|d| d.id) {
+                Some(id) if self.modal.is_none() => self.close_tab(id),
+                _ => Task::none(),
+            },
+            Message::Sent(id, generation, res) => {
+                // A tab closed or cancelled since the send drops its response.
+                if let Some(doc) = self.docs.iter_mut().find(|d| d.id == id)
+                    && doc.generation == generation
+                {
+                    doc.pending = false;
+                    doc.result = Some(res.map(response::View::new));
                 }
                 Task::none()
             }
             Message::CloseRequested(id) => {
-                if self.dirty() && !self.quitting {
-                    self.modal = Some(Modal::Unsaved(Then::Quit(id)));
-                    Task::none()
+                if self.any_dirty() && !self.quitting {
+                    self.guard(Then::Quit(id))
                 } else {
                     window::close(id)
                 }
@@ -721,16 +875,19 @@ impl App {
     }
 
     fn editor_msg(&mut self, msg: editor::Msg) -> Task<Message> {
+        let Some(doc) = self.docs.active_mut() else {
+            return Task::none();
+        };
         match msg {
             editor::Msg::Body(action) => {
-                self.body.perform(action);
-                self.req.body.text = self.body.text();
+                doc.body.perform(action);
+                doc.req.body.text = doc.body.text();
                 Task::none()
             }
             editor::Msg::FormatJson => {
-                if let Some(pretty) = editor::pretty(&self.req.body.text) {
-                    self.body = text_editor::Content::with_text(&pretty);
-                    self.req.body.text = pretty;
+                if let Some(pretty) = editor::pretty(&doc.req.body.text) {
+                    doc.body = text_editor::Content::with_text(&pretty);
+                    doc.req.body.text = pretty;
                 }
                 Task::none()
             }
@@ -739,7 +896,7 @@ impl App {
                 Task::none()
             }
             other => {
-                if editor::update(&mut self.req, &mut self.tab, other) {
+                if editor::update(&mut doc.req, &mut doc.tab, other) {
                     self.send()
                 } else {
                     Task::none()
@@ -748,20 +905,50 @@ impl App {
         }
     }
 
-    /// Gives up on the request in flight. Its response, if it arrives, is
-    /// dropped because the generation has moved on.
+    /// Gives up on the active tab's request in flight. Its response, if it
+    /// arrives, is dropped because the generation has moved on.
     fn cancel_request(&mut self) {
-        if self.pending {
-            self.generation += 1;
-            self.pending = false;
-            self.result = Some(Err("Request cancelled".into()));
+        if let Some(doc) = self.docs.active_mut()
+            && doc.pending
+        {
+            doc.generation += 1;
+            doc.pending = false;
+            doc.result = Some(Err("Request cancelled".into()));
+        }
+    }
+
+    fn tab_msg(&mut self, msg: tab_strip::Msg) -> Task<Message> {
+        match msg {
+            tab_strip::Msg::Activate(id) => {
+                if let Some(at) = self.docs.position(|d| d.id == id) {
+                    self.docs.activate(at);
+                    self.save_state();
+                }
+                Task::none()
+            }
+            tab_strip::Msg::Close(id) => {
+                if self.modal.is_none() {
+                    self.close_tab(id)
+                } else {
+                    Task::none()
+                }
+            }
+            tab_strip::Msg::New => {
+                if self.modal.is_none() {
+                    self.new_tab();
+                }
+                Task::none()
+            }
         }
     }
 
     fn response_msg(&mut self, msg: response::Msg) -> Task<Message> {
+        let Some(doc) = self.docs.active_mut() else {
+            return Task::none();
+        };
         match msg {
             response::Msg::Copy => {
-                let text = match &self.result {
+                let text = match &doc.result {
                     Some(Ok(view)) => Some(view.text().to_string()),
                     _ => None,
                 };
@@ -774,7 +961,7 @@ impl App {
                 }
             }
             other => {
-                if let Some(Ok(view)) = &mut self.result {
+                if let Some(Ok(view)) = &mut doc.result {
                     response::update(view, other);
                 }
                 Task::none()
@@ -789,9 +976,9 @@ impl App {
                     return Task::none();
                 };
                 if self.save() {
-                    self.run(then)
+                    self.guard(then)
                 } else {
-                    // A scratch request asks for a name first. Remember the
+                    // An untitled request asks for a name first. Remember the
                     // action; it runs once the name is saved.
                     if self.modal.is_some() {
                         self.after_save = Some(then);
@@ -803,7 +990,17 @@ impl App {
                 let Some(Modal::Unsaved(then)) = self.modal.take() else {
                     return Task::none();
                 };
-                self.run(then)
+                match then {
+                    Then::Close(_) => self.run(then),
+                    then => {
+                        // Throw away this tab's edits, then ask about the next.
+                        if let Some(doc) = self.doc_mut() {
+                            let saved = doc.saved.clone();
+                            doc.replace_req(saved);
+                        }
+                        self.guard(then)
+                    }
+                }
             }
             dialog::Msg::Cancel => {
                 if self.context.take().is_none() && self.modal.take().is_none() {
@@ -880,7 +1077,7 @@ impl App {
     // --- drawing ---
 
     fn title(&self) -> String {
-        match (&self.open, &self.collection) {
+        match (self.doc().and_then(|d| d.open.as_ref()), &self.collection) {
             (Some(path), Some(c)) => {
                 let rel = path.strip_prefix(&c.root).unwrap_or(path);
                 let mut parts: Vec<String> = rel
@@ -893,7 +1090,7 @@ impl App {
                 parts.join(" / ")
             }
             (Some(path), None) => collection::stem(path),
-            (None, _) => "Scratch request".into(),
+            (None, _) => "Untitled request".into(),
         }
     }
 
@@ -955,7 +1152,7 @@ impl App {
         let side = sidebar::view(sidebar::Props {
             root: c.map(|c| c.root.as_path()),
             tree: c.map(|c| c.tree.as_slice()).unwrap_or_default(),
-            selected: self.open.as_deref(),
+            selected: self.doc().and_then(|d| d.open.as_deref()),
             envs: c.map(|c| c.envs.as_slice()).unwrap_or_default(),
             env: self.env.as_deref(),
             expanded: &self.expanded,
@@ -973,7 +1170,37 @@ impl App {
 
     /// The request editor above the response viewer, each in a rounded card.
     fn main_pane(&self) -> Element<'_, Message> {
-        let dirty = self.dirty();
+        let items = self
+            .docs
+            .iter()
+            .map(|d| tab_strip::Item {
+                id: d.id,
+                label: d
+                    .open
+                    .as_deref()
+                    .map_or("Untitled".into(), collection::stem),
+                dirty: d.dirty(),
+            })
+            .collect();
+        let strip = tab_strip::view(items, self.doc().map(|d| d.id)).map(Message::Tabs);
+
+        let Some(doc) = self.doc() else {
+            let hint =
+                text("No request open. Pick one in the sidebar, or press Cmd+T for a new one.")
+                    .size(theme::TEXT);
+            return container(
+                column![strip, container(hint).center(Fill)]
+                    .spacing(12)
+                    .height(Fill),
+            )
+            .style(theme::card)
+            .padding(12)
+            .width(Fill)
+            .height(Fill)
+            .into();
+        };
+
+        let dirty = doc.dirty();
         let header = row![
             text(self.title()).size(theme::HEADING),
             if dirty {
@@ -989,23 +1216,24 @@ impl App {
         ]
         .spacing(8);
         let request = column![
+            strip,
             header,
             editor::view(
-                &self.req,
-                self.tab,
-                self.pending,
-                &resolve::effective(&self.req, &self.vars),
-                &self.body,
+                &doc.req,
+                doc.tab,
+                doc.pending,
+                &resolve::effective(&doc.req, &self.vars),
+                &doc.body,
             )
             .map(Message::Editor),
         ]
         .spacing(10)
         .height(Fill);
 
-        let response: Element<'_, Message> = if self.pending {
+        let response: Element<'_, Message> = if doc.pending {
             text("Sending…").size(theme::TEXT).into()
         } else {
-            match &self.result {
+            match &doc.result {
                 Some(Ok(view)) => response::view(view).map(Message::Response),
                 Some(Err(err)) => text(err.as_str()).style(text::danger).into(),
                 None => text("Send a request to see the response here. Cmd+Enter sends.").into(),
@@ -1107,7 +1335,8 @@ impl App {
     fn modal_view<'a>(&'a self, modal: &'a Modal) -> Element<'a, Message> {
         match modal {
             Modal::Unsaved(_) => {
-                dialog::unsaved(self.title(), self.open.is_none()).map(Message::Dialog)
+                let untitled = self.doc().is_some_and(|d| d.open.is_none());
+                dialog::unsaved(self.title(), untitled).map(Message::Dialog)
             }
             Modal::Name {
                 purpose,
@@ -1139,7 +1368,8 @@ impl App {
 }
 
 /// Window-level input: the pointer position (for context menus), Cmd+S
-/// saves, Cmd+Enter sends, and Escape closes a menu or dialog.
+/// saves, Cmd+T and Cmd+W open and close tabs, Cmd+Enter sends, and Escape
+/// closes a menu or dialog.
 fn shortcut(event: iced::Event, _status: event::Status, _id: window::Id) -> Option<Message> {
     match event {
         iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
@@ -1154,6 +1384,8 @@ fn shortcut(event: iced::Event, _status: event::Status, _id: window::Id) -> Opti
                     Some(Message::Dialog(dialog::Msg::Cancel))
                 }
                 keyboard::Key::Character("s") if modifiers.command() => Some(Message::Save),
+                keyboard::Key::Character("t") if modifiers.command() => Some(Message::NewTab),
+                keyboard::Key::Character("w") if modifiers.command() => Some(Message::CloseTab),
                 keyboard::Key::Named(keyboard::key::Named::Enter) if modifiers.command() => {
                     Some(Message::Send)
                 }
@@ -1189,5 +1421,35 @@ fn display_name(path: &Path) -> String {
             .unwrap_or_default()
     } else {
         collection::stem(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_state_file_has_no_tabs() {
+        let old = r#"{"collection": "/work/api", "env": "dev"}"#;
+        let state: SavedState = serde_json::from_str(old).unwrap();
+        assert_eq!(state.collection, Some(PathBuf::from("/work/api")));
+        assert!(state.tabs.is_empty());
+        assert_eq!(state.active_tab, 0);
+    }
+
+    #[test]
+    fn tabs_round_trip() {
+        let state = SavedState {
+            collection: Some(PathBuf::from("/work/api")),
+            env: None,
+            tabs: vec![
+                PathBuf::from("/work/api/a.json"),
+                PathBuf::from("/work/api/b.json"),
+            ],
+            active_tab: 1,
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        let back: SavedState = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, state);
     }
 }
