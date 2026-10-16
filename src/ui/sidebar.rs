@@ -46,6 +46,8 @@ pub enum Action {
     ToggleNewMenu,
     /// A double-click on a request: open it and send it.
     Trigger(PathBuf),
+    /// Opens the paste dialog for a curl command.
+    ImportCurl,
     /// Moves an environment file to the Trash.
     DeleteEnv(PathBuf),
     /// Opens a collection picked from the recents list.

@@ -22,7 +22,7 @@ use crate::spark::{self, Series};
 use crate::tabs::Tabs;
 use crate::ui::tab_strip;
 use crate::ui::{dialog, editor, kv, response, sidebar, theme};
-use crate::{curl, http, resolve, samples, seed};
+use crate::{curl, http, import, resolve, samples, seed};
 
 const NOTICE_TIME: Duration = Duration::from_secs(4);
 /// The two resizable panes: the collection sidebar and the request/response area.
@@ -192,6 +192,10 @@ enum Modal {
         error: Option<String>,
     },
     Delete(PathBuf),
+    /// The curl paste dialog. Its text lives in `App::curl_paste`.
+    ImportCurl {
+        error: Option<String>,
+    },
     /// The settings form. `timeout` is the text being typed; `draft` holds
     /// the other choices until Save.
     Settings {
@@ -225,6 +229,9 @@ pub struct App {
     arrived: HashMap<PathBuf, Instant>,
     /// When the app started; animations measure their phase from it.
     epoch: Instant,
+    /// The text of the curl paste dialog. iced edits it in place, so it
+    /// lives here rather than in the modal.
+    curl_paste: text_editor::Content,
     /// The operating system's light or dark mode, for the System theme.
     system_mode: Mode,
     /// Set when a dialog opens that needs its name field focused.
@@ -299,6 +306,7 @@ impl App {
             sparks: HashMap::new(),
             arrived: HashMap::new(),
             epoch: Instant::now(),
+            curl_paste: text_editor::Content::new(),
             system_mode: Mode::None,
             focus_name: false,
             after_save: None,
@@ -882,6 +890,10 @@ impl App {
                     return self.send();
                 }
             }
+            Action::ImportCurl => {
+                self.curl_paste = text_editor::Content::new();
+                self.modal = Some(Modal::ImportCurl { error: None });
+            }
             Action::ToggleNewMenu => {
                 self.new_menu = match self.new_menu {
                     Some(_) => None,
@@ -1154,6 +1166,30 @@ impl App {
         }
     }
 
+    /// Turns the pasted curl command into a request at the collection's top
+    /// level and opens it. A command that can't be read keeps the dialog
+    /// open with the reason.
+    fn import_curl(&mut self) {
+        let Some(root) = self.collection.as_ref().map(|c| c.root.clone()) else {
+            return;
+        };
+        let result = import::curl::parse(&self.curl_paste.text())
+            .and_then(|(name, req)| import::write_one(&root, &name, &req));
+        match result {
+            Ok(path) => {
+                self.modal = None;
+                self.reload_tree();
+                self.notify(format!("Imported \"{}\"", collection::stem(&path)), false);
+                self.open_tab(path);
+            }
+            Err(e) => {
+                if let Some(Modal::ImportCurl { error }) = &mut self.modal {
+                    *error = Some(e);
+                }
+            }
+        }
+    }
+
     /// Checks the settings form, saves it and applies it. The form stays
     /// open, with an error, when the timeout is not a number in range.
     fn settings_save(&mut self) {
@@ -1366,6 +1402,17 @@ impl App {
                     *timeout = text;
                     *error = None;
                 }
+                Task::none()
+            }
+            dialog::Msg::CurlEdit(action) => {
+                self.curl_paste.perform(action);
+                if let Some(Modal::ImportCurl { error }) = &mut self.modal {
+                    *error = None;
+                }
+                Task::none()
+            }
+            dialog::Msg::CurlImport => {
+                self.import_curl();
                 Task::none()
             }
             dialog::Msg::SettingsSave => {
@@ -1674,6 +1721,7 @@ impl App {
         ));
         if let Some(root) = current {
             items.push(item("Reload".into(), sidebar::Action::Reload));
+            items.push(item("Import cURL…".into(), sidebar::Action::ImportCurl));
             items.push(item(
                 "Rename…".into(),
                 sidebar::Action::RenameCollection(root.to_path_buf()),
@@ -1830,6 +1878,9 @@ impl App {
                 timeout,
                 error,
             } => dialog::settings(draft, timeout, error.as_deref()).map(Message::Dialog),
+            Modal::ImportCurl { error } => {
+                dialog::import_curl(&self.curl_paste, error.as_deref()).map(Message::Dialog)
+            }
             Modal::Delete(path) => {
                 let what = if path.is_dir() {
                     format!(

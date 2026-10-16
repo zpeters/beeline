@@ -9,6 +9,7 @@ iced = { version = "0.14.0", features = ["canvas"] }
 rfd = "0.17.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
+shell-words = "1.1.1"
 trash = "5.2.9"
 ureq = "3.4.2"
 url = "2.5.8"

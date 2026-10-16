@@ -2,7 +2,9 @@
 //! environment editor and settings. They only report messages; `App` acts
 //! on them.
 
-use iced::widget::{column, container, pick_list, radio, row, scrollable, space, text};
+use iced::widget::{
+    column, container, pick_list, radio, row, scrollable, space, text, text_editor,
+};
 use iced::{Color, Element, Fill, Length};
 
 use crate::model::KeyValue;
@@ -30,6 +32,8 @@ pub enum Msg {
     SettingsSize(u16),
     SettingsTimeout(String),
     SettingsSave,
+    CurlEdit(text_editor::Action),
+    CurlImport,
 }
 
 /// Puts a dimmed backdrop behind `content`, centred.
@@ -121,6 +125,35 @@ pub fn name<'a>(heading: &'static str, value: &'a str, error: Option<&'a str>) -
     col = col.push(
         row![
             theme::button("OK").on_press(Msg::NameOk),
+            theme::button("Cancel").on_press(Msg::Cancel),
+        ]
+        .spacing(8),
+    );
+    overlay(col.into())
+}
+
+/// Paste a curl command; Import turns it into a request.
+pub fn import_curl<'a>(
+    content: &'a text_editor::Content,
+    error: Option<&'a str>,
+) -> Element<'a, Msg> {
+    let mut col = column![
+        text("Import cURL").size(theme::heading_px()),
+        text("Paste a curl command, such as one copied from a browser or API docs."),
+        text_editor(content)
+            .style(theme::editor)
+            .font(theme::mono())
+            .on_action(Msg::CurlEdit)
+            .height(160),
+    ]
+    .spacing(12);
+    if let Some(error) = error {
+        col = col.push(text(error).style(text::danger));
+    }
+    let can_import = !content.text().trim().is_empty();
+    col = col.push(
+        row![
+            theme::button("Import").on_press_maybe(can_import.then_some(Msg::CurlImport)),
             theme::button("Cancel").on_press(Msg::Cancel),
         ]
         .spacing(8),
