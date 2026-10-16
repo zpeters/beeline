@@ -990,8 +990,14 @@ impl App {
         .spacing(8);
         let request = column![
             header,
-            editor::view(&self.req, self.tab, self.pending, &self.vars, &self.body)
-                .map(Message::Editor),
+            editor::view(
+                &self.req,
+                self.tab,
+                self.pending,
+                &resolve::effective(&self.req, &self.vars),
+                &self.body,
+            )
+            .map(Message::Editor),
         ]
         .spacing(10)
         .height(Fill);

@@ -1,5 +1,5 @@
 //! The request editor: method, URL, Send, and the Params / Headers / Body /
-//! Auth tabs. `update` applies messages to the request; `App` handles the
+//! Auth / Vars tabs. `update` applies messages to the request; `App` handles the
 //! body text itself because it lives in an iced `text_editor::Content`.
 
 use std::collections::BTreeMap;
@@ -18,6 +18,7 @@ pub enum Tab {
     Headers,
     Body,
     Auth,
+    Vars,
 }
 
 /// Which key/value table a message is for.
@@ -26,6 +27,7 @@ pub enum Table {
     Params,
     Headers,
     Form,
+    Vars,
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +105,7 @@ pub fn update(req: &mut RequestFile, tab: &mut Tab, msg: Msg) -> bool {
         }
         Msg::Kv(Table::Headers, m) => kv::update(&mut req.headers, m),
         Msg::Kv(Table::Form, m) => kv::update(&mut req.body.fields, m),
+        Msg::Kv(Table::Vars, m) => kv::update(&mut req.vars, m),
         Msg::BodyKind(k) => req.body.kind = k,
         Msg::Body(_) | Msg::FormatJson | Msg::Cancel => {}
         Msg::AuthKind(k) => req.auth.kind = k,
@@ -113,8 +116,8 @@ pub fn update(req: &mut RequestFile, tab: &mut Tab, msg: Msg) -> bool {
     false
 }
 
-/// Draws the editor. `vars` are the selected environment's variables,
-/// used only for hints. `busy` disables Send.
+/// Draws the editor. `vars` are the variables the request sends with
+/// (see `resolve::effective`), used only for hints. `busy` disables Send.
 pub fn view<'a>(
     req: &'a RequestFile,
     tab: Tab,
@@ -148,9 +151,7 @@ pub fn view<'a>(
     let unknown = unknown_vars(req, vars);
     if !unknown.is_empty() {
         let names: Vec<String> = unknown.iter().map(|n| format!("{{{{{n}}}}}")).collect();
-        col = col.push(
-            text(format!("Not in the environment: {}", names.join(", "))).style(text::warning),
-        );
+        col = col.push(text(format!("Not defined: {}", names.join(", "))).style(text::warning));
     }
 
     let tabs = row![
@@ -158,6 +159,7 @@ pub fn view<'a>(
         tab_button(tab, Tab::Headers, count_label("Headers", &req.headers)),
         tab_button(tab, Tab::Body, body_label(req)),
         tab_button(tab, Tab::Auth, auth_label(req)),
+        tab_button(tab, Tab::Vars, count_label("Vars", &req.vars)),
     ]
     .spacing(16);
     col = col.push(tabs).push(rule::horizontal(1));
@@ -173,6 +175,15 @@ pub fn view<'a>(
         }
         Tab::Body => body_editor(req, body),
         Tab::Auth => scrollable(auth_editor(&req.auth)).height(Fill).into(),
+        Tab::Vars => column![
+            text(
+                "Overrides the environment's variable of the same name. Unchecked rows are ignored."
+            ),
+            scrollable(kv::view(&req.vars, true).map(|m| Msg::Kv(Table::Vars, m))).height(Fill),
+        ]
+        .spacing(8)
+        .height(Fill)
+        .into(),
     };
     col.push(content).height(Fill).into()
 }

@@ -17,6 +17,10 @@ pub struct RequestFile {
     pub params: Vec<KeyValue>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub headers: Vec<KeyValue>,
+    /// This request's own `{{name}}` values. They add to the environment's
+    /// and win over it when names collide (see `resolve::effective`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub vars: Vec<KeyValue>,
     pub body: Body,
     pub auth: Auth,
 }
@@ -28,6 +32,7 @@ impl Default for RequestFile {
             url: String::new(),
             params: Vec::new(),
             headers: Vec::new(),
+            vars: Vec::new(),
             body: Body::default(),
             auth: Auth::default(),
         }
@@ -175,6 +180,7 @@ mod tests {
                 enabled: false,
                 ..KeyValue::new("Accept", "*/*")
             }],
+            vars: vec![KeyValue::new("token", "abc")],
             body: Body {
                 kind: BodyKind::Json,
                 text: "{}".into(),
@@ -194,8 +200,27 @@ mod tests {
     fn empty_fields_are_omitted() {
         let json = to_json(&RequestFile::default());
         assert!(!json.contains("params"));
+        assert!(!json.contains("vars"));
         assert!(!json.contains("token"));
         assert!(json.contains(r#""type": "none""#));
         assert!(json.ends_with("}\n"));
+    }
+
+    #[test]
+    fn request_vars_round_trip_with_enabled_flag() {
+        let req = RequestFile {
+            vars: vec![
+                KeyValue::new("base", "https://staging.test"),
+                KeyValue {
+                    enabled: false,
+                    ..KeyValue::new("old", "1")
+                },
+            ],
+            ..RequestFile::default()
+        };
+        let json = to_json(&req);
+        assert!(json.contains(r#""vars""#));
+        let back: RequestFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.vars, req.vars);
     }
 }

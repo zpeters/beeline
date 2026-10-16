@@ -63,11 +63,14 @@ Request file:
   "url": "{{base}}/users?notify=true",
   "params": [{ "key": "notify", "value": "true", "enabled": true }],
   "headers": [{ "key": "Accept", "value": "application/json", "enabled": true }],
+  "vars": [{ "key": "base", "value": "https://staging.example.com", "enabled": true }],
   "body": { "type": "json", "text": "{\"name\": \"bee\"}" },
   "auth": { "type": "bearer", "token": "{{token}}" }
 }
 ```
 
+- `vars`: the request's own variables, same shape as the environment's
+  but as a key/value list so each row can be disabled.
 - `body.type`: `none` | `json` (`text`) | `text` (`text`) | `form`
   (`fields`: key/value list).
 - `auth.type`: `none` | `bearer` (`token`) | `basic` (`username`,
@@ -88,7 +91,9 @@ the params table rebuilds the URL query from the enabled params. The
 params list is also saved in the file so disabled params survive.
 
 **Variables.** `{{name}}` is replaced with the selected environment's
-value. Whitespace inside the braces is allowed (`{{ name }}`). An unknown
+value, or the request's own `vars` value when both define the name. Only
+enabled request vars count, and a request var never changes the
+environment file. Whitespace inside the braces is allowed (`{{ name }}`). An unknown
 variable in the URL is an error that names it (otherwise it surfaces as
 a confusing DNS error). In headers, body and auth, unknown variables are
 sent as written. Substitution happens only at send time; the editor

@@ -25,7 +25,19 @@ fn has_header(headers: &[(String, String)], name: &str) -> bool {
     headers.iter().any(|(k, _)| k.eq_ignore_ascii_case(name))
 }
 
-pub fn resolve(req: &RequestFile, vars: &BTreeMap<String, String>) -> Result<Resolved, String> {
+/// The variables a request sees: the environment's, plus the request's own
+/// enabled ones. A request's value wins when the names collide. Values are
+/// literal; they are not interpolated again.
+pub fn effective(req: &RequestFile, env: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    let mut vars = env.clone();
+    for kv in enabled(&req.vars) {
+        vars.insert(kv.key.trim().to_string(), kv.value.clone());
+    }
+    vars
+}
+
+pub fn resolve(req: &RequestFile, env: &BTreeMap<String, String>) -> Result<Resolved, String> {
+    let vars = &effective(req, env);
     let sub = |s: &str| interpolate(s, vars);
 
     let method = req.method.trim().to_ascii_uppercase();
@@ -245,6 +257,42 @@ mod tests {
             header(&r, "content-type"),
             Some("application/x-www-form-urlencoded")
         );
+    }
+
+    #[test]
+    fn request_var_overrides_env_var() {
+        let mut req = get("{{base}}/a");
+        req.vars = vec![KeyValue::new("base", "https://staging.test")];
+        let r = resolve(&req, &vars()).unwrap();
+        assert_eq!(r.url, "https://staging.test/a");
+    }
+
+    #[test]
+    fn request_var_can_define_a_new_name() {
+        let mut req = get("{{host}}/a");
+        req.vars = vec![KeyValue::new("host", "https://only-here.test")];
+        let r = resolve(&req, &vars()).unwrap();
+        assert_eq!(r.url, "https://only-here.test/a");
+    }
+
+    #[test]
+    fn disabled_and_blank_request_vars_are_ignored() {
+        let mut req = get("{{base}}/a");
+        req.vars = vec![
+            KeyValue {
+                enabled: false,
+                ..KeyValue::new("base", "https://off.test")
+            },
+            KeyValue::new("  ", "blank key"),
+        ];
+        assert_eq!(effective(&req, &vars()), vars());
+    }
+
+    #[test]
+    fn request_var_values_are_not_reinterpolated() {
+        let mut req = get("https://x");
+        req.vars = vec![KeyValue::new("a", "{{base}}")];
+        assert_eq!(effective(&req, &vars())["a"], "{{base}}");
     }
 
     #[test]
