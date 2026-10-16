@@ -42,6 +42,8 @@ pub enum Action {
     ToggleCollectionMenu,
     /// Opens or closes the environment menu under the environment name.
     ToggleEnvMenu,
+    /// Opens or closes the "+" menu beside REQUESTS.
+    ToggleNewMenu,
     /// Moves an environment file to the Trash.
     DeleteEnv(PathBuf),
     /// Opens a collection picked from the recents list.
@@ -109,13 +111,13 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
     };
     let mut col = column![name].spacing(6);
 
-    let Some(root) = p.root else {
+    if p.root.is_none() {
         col = col.push(text(
             "Open a folder to use it as a collection. Each request is a JSON \
              file; subfolders group them.",
         ));
         return col.push(gear()).height(Fill).into();
-    };
+    }
 
     // Layer two: the environment. A tiny label says what it is; the name
     // stays at full strength because it changes every request sent.
@@ -138,35 +140,18 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
                 .on_press(Action::EditEnv),
         );
     }
-    col = col.push(column![
-        container(
-            text("ENVIRONMENT")
-                .size(theme::small_px() - 2.0)
-                .style(theme::muted),
-        )
-        .padding(Padding {
-            top: 0.0,
-            right: 0.0,
-            bottom: 0.0,
-            left: 10.0,
-        }),
-        env_line,
-    ]);
+    col = col.push(column![section_label("ENVIRONMENT"), env_line]);
 
-    // Actions as plain text: they serve the tree, so they should not outshout it.
-    let action = |label: &'static str, msg: Action| {
-        theme::button(text(label).size(theme::small_px()))
-            .style(theme::text_button)
-            .on_press(msg)
-    };
+    // Layer three: the requests, labelled like the environment. New items
+    // hide behind a "+" so the label leads.
     col = col.push(
         row![
-            action("+ Request", Action::NewRequest(root.to_path_buf())),
-            action("+ Folder", Action::NewFolder(root.to_path_buf())),
+            section_label("REQUESTS"),
             space::horizontal().width(Fill),
-            action("Reload", Action::Reload),
+            theme::button(text("+").size(theme::text_px()))
+                .style(theme::text_button)
+                .on_press(Action::ToggleNewMenu),
         ]
-        .spacing(2)
         .align_y(iced::Alignment::Center),
     );
 
@@ -358,6 +343,23 @@ fn row_style(
     };
     style.border.radius = 4.0.into();
     style
+}
+
+/// A tiny muted capital label for a sidebar section, inset to line up with
+/// the text inside the buttons below it.
+fn section_label<'a>(label: &'static str) -> Element<'a, Action> {
+    container(
+        text(label)
+            .size(theme::small_px() - 2.0)
+            .style(theme::muted),
+    )
+    .padding(Padding {
+        top: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+        left: 10.0,
+    })
+    .into()
 }
 
 /// Pushes `content` right by one indent step per `depth`.

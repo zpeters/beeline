@@ -216,6 +216,8 @@ pub struct App {
     collection_menu: Option<Point>,
     /// The environment menu, open at this point under the environment name.
     env_menu: Option<Point>,
+    /// The "+" menu beside REQUESTS: new request or folder.
+    new_menu: Option<Point>,
     /// Response times per request file, for the sidebar sparklines. Kept
     /// for this session only; never saved.
     sparks: HashMap<PathBuf, Series>,
@@ -290,6 +292,7 @@ impl App {
             recents: Vec::new(),
             collection_menu: None,
             env_menu: None,
+            new_menu: None,
             sparks: HashMap::new(),
             arrived: HashMap::new(),
             epoch: Instant::now(),
@@ -789,10 +792,12 @@ impl App {
                 | Action::Exit(_)
                 | Action::ToggleCollectionMenu
                 | Action::ToggleEnvMenu
+                | Action::ToggleNewMenu
         ) {
             self.context = None;
             self.collection_menu = None;
             self.env_menu = None;
+            self.new_menu = None;
         }
         match action {
             Action::OpenCollection => {
@@ -862,6 +867,12 @@ impl App {
             }
             Action::ToggleEnvMenu => {
                 self.env_menu = match self.env_menu {
+                    Some(_) => None,
+                    None => Some(self.cursor),
+                };
+            }
+            Action::ToggleNewMenu => {
+                self.new_menu = match self.new_menu {
                     Some(_) => None,
                     None => Some(self.cursor),
                 };
@@ -1033,6 +1044,7 @@ impl App {
                 self.context = None;
                 self.collection_menu = None;
                 self.env_menu = None;
+                self.new_menu = None;
                 Task::none()
             }
             Message::Tabs(msg) => self.tab_msg(msg),
@@ -1438,6 +1450,9 @@ impl App {
         if let Some(at) = self.env_menu {
             layers.push(self.env_menu_view(at));
         }
+        if let Some(at) = self.new_menu {
+            layers.push(self.new_menu_view(at));
+        }
         if let Some(modal) = &self.modal {
             layers.push(self.modal_view(modal));
         }
@@ -1634,6 +1649,7 @@ impl App {
             sidebar::Action::NewCollection,
         ));
         if let Some(root) = current {
+            items.push(item("Reload".into(), sidebar::Action::Reload));
             items.push(item(
                 "Rename…".into(),
                 sidebar::Action::RenameCollection(root.to_path_buf()),
@@ -1643,23 +1659,28 @@ impl App {
                 sidebar::Action::DeleteCollection(root.to_path_buf()),
             ));
         }
-        let card = container(column(items).spacing(2))
-            .style(theme::card)
-            .padding(6)
-            .width(240);
-        let placed = container(card)
-            .padding(iced::Padding {
-                top: at.y + 12.0,
-                right: 0.0,
-                bottom: 0.0,
-                left: 12.0,
-            })
-            .width(Fill)
-            .height(Fill);
-        mouse_area(placed)
-            .on_press(Message::CloseContext)
-            .on_right_press(Message::CloseContext)
-            .into()
+        popup(items, at)
+    }
+
+    /// The "+" menu beside REQUESTS: new items at the collection's top level.
+    fn new_menu_view(&self, at: Point) -> Element<'_, Message> {
+        let Some(c) = &self.collection else {
+            return text("").into();
+        };
+        let item = |label: &'static str, action: sidebar::Action| -> Element<'_, Message> {
+            theme::button(text(label).size(theme::text_px()))
+                .style(theme::text_button)
+                .width(Fill)
+                .on_press(Message::Sidebar(action))
+                .into()
+        };
+        popup(
+            vec![
+                item("New request…", sidebar::Action::NewRequest(c.root.clone())),
+                item("New folder…", sidebar::Action::NewFolder(c.root.clone())),
+            ],
+            at,
+        )
     }
 
     /// The menu under the environment name, laid out like the collection
@@ -1705,23 +1726,7 @@ impl App {
                 sidebar::Action::DeleteEnv(path),
             ));
         }
-        let card = container(column(items).spacing(2))
-            .style(theme::card)
-            .padding(6)
-            .width(240);
-        let placed = container(card)
-            .padding(iced::Padding {
-                top: at.y + 12.0,
-                right: 0.0,
-                bottom: 0.0,
-                left: 12.0,
-            })
-            .width(Fill)
-            .height(Fill);
-        mouse_area(placed)
-            .on_press(Message::CloseContext)
-            .on_right_press(Message::CloseContext)
-            .into()
+        popup(items, at)
     }
 
     fn context_menu(&self, path: &Path, at: Point) -> Element<'_, Message> {
@@ -1868,6 +1873,28 @@ fn drag_ghost_layer(name: String, at: Point) -> Element<'static, Message> {
         })
         .width(Fill)
         .height(Fill)
+        .into()
+}
+
+/// A sidebar menu card, opened just below `at`. Pressing anywhere outside
+/// it closes it.
+fn popup<'a>(items: Vec<Element<'a, Message>>, at: Point) -> Element<'a, Message> {
+    let card = container(column(items).spacing(2))
+        .style(theme::card)
+        .padding(6)
+        .width(240);
+    let placed = container(card)
+        .padding(iced::Padding {
+            top: at.y + 12.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 12.0,
+        })
+        .width(Fill)
+        .height(Fill);
+    mouse_area(placed)
+        .on_press(Message::CloseContext)
+        .on_right_press(Message::CloseContext)
         .into()
 }
 
