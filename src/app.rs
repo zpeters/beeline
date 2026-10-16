@@ -890,6 +890,18 @@ impl App {
                     return self.send();
                 }
             }
+            Action::ImportFile => {
+                if let Some(c) = &self.collection {
+                    let root = c.root.clone();
+                    let picked = rfd::FileDialog::new()
+                        .set_title("Import an OpenAPI or Postman file")
+                        .add_filter("API file", &["json", "yaml", "yml"])
+                        .pick_file();
+                    if let Some(file) = picked {
+                        self.import_file(&root, &file);
+                    }
+                }
+            }
             Action::ImportCurl => {
                 self.curl_paste = text_editor::Content::new();
                 self.modal = Some(Modal::ImportCurl { error: None });
@@ -1163,6 +1175,30 @@ impl App {
                     Task::none()
                 }
             }
+        }
+    }
+
+    /// Imports an API file into a new folder in the collection, then shows
+    /// the folder open in the tree.
+    fn import_file(&mut self, root: &Path, file: &Path) {
+        let result = fs::read_to_string(file)
+            .map_err(|e| format!("Could not read {}: {e}", file.display()))
+            .and_then(|text| import::parse_file(&text))
+            .and_then(|imported| import::write(root, &imported));
+        match result {
+            Ok((folder, count)) => {
+                self.expanded.insert(folder.clone());
+                self.reload_tree();
+                let noun = if count == 1 { "request" } else { "requests" };
+                self.notify(
+                    format!(
+                        "Imported {count} {noun} into \"{}\"",
+                        collection::stem(&folder)
+                    ),
+                    false,
+                );
+            }
+            Err(e) => self.notify(e, true),
         }
     }
 
@@ -1722,6 +1758,7 @@ impl App {
         if let Some(root) = current {
             items.push(item("Reload".into(), sidebar::Action::Reload));
             items.push(item("Import cURL…".into(), sidebar::Action::ImportCurl));
+            items.push(item("Import file…".into(), sidebar::Action::ImportFile));
             items.push(item(
                 "Rename…".into(),
                 sidebar::Action::RenameCollection(root.to_path_buf()),

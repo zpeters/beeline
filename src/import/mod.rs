@@ -2,6 +2,7 @@
 //! returns an [`Imported`]; [`write`] puts it on disk inside a collection.
 
 pub mod curl;
+pub mod openapi;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,10 +10,6 @@ use std::path::{Path, PathBuf};
 use crate::collection;
 use crate::model::RequestFile;
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the folder importers that follow")
-)]
 /// One request found by a parser: the folders it sits in (outermost first),
 /// its name, and the request.
 #[derive(Debug, Clone, PartialEq)]
@@ -22,10 +19,6 @@ pub struct Item {
     pub req: RequestFile,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the folder importers that follow")
-)]
 /// What a parser found: a name for the new folder, and its requests.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Imported {
@@ -33,10 +26,6 @@ pub struct Imported {
     pub items: Vec<Item>,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the folder importers that follow")
-)]
 /// Writes `imported` into a new folder inside `root`. The folder takes the
 /// imported name, or the name with " 2", " 3"… when that is taken. Returns
 /// the folder and how many requests were written.
@@ -55,6 +44,15 @@ pub fn write(root: &Path, imported: &Imported) -> Result<(PathBuf, usize), Strin
     fs::create_dir_all(&folder)
         .map_err(|e| format!("Could not create {}: {e}", folder.display()))?;
     Ok((folder, imported.items.len()))
+}
+
+/// Reads an API file and parses it as whichever format it is.
+pub fn parse_file(text: &str) -> Result<Imported, String> {
+    let doc = openapi::read(text)?;
+    if openapi::is_openapi(&doc) {
+        return openapi::parse(&doc);
+    }
+    Err("Not an OpenAPI 3 file".into())
 }
 
 /// Writes one request at the top level of `root`. Returns its path.

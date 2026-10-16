@@ -48,6 +48,8 @@ pub enum Action {
     Trigger(PathBuf),
     /// Opens the paste dialog for a curl command.
     ImportCurl,
+    /// Picks an OpenAPI or Postman file to import.
+    ImportFile,
     /// Moves an environment file to the Trash.
     DeleteEnv(PathBuf),
     /// Opens a collection picked from the recents list.
