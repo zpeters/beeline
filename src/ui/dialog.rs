@@ -31,6 +31,7 @@ pub enum Msg {
     SettingsMono(MonoFont),
     SettingsSize(u16),
     SettingsTimeout(String),
+    SettingsCollectionsDir(String),
     SettingsSave,
     CurlEdit(text_editor::Action),
     CurlImport,
@@ -96,6 +97,9 @@ pub fn settings<'a>(
         pick_list(sizes, Some(draft.text_size), Msg::SettingsSize).style(theme::pick),
         text("Request timeout (seconds, 1 to 600)"),
         theme::text_input("30", timeout).on_input(Msg::SettingsTimeout),
+        text("Collections folder (new collections are created here)"),
+        theme::text_input("~/Documents/beeline", &draft.collections_dir)
+            .on_input(Msg::SettingsCollectionsDir),
     ]
     .spacing(8);
     if let Some(error) = error {

@@ -3,6 +3,7 @@
 
 use std::fmt;
 use std::ops::RangeInclusive;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,9 @@ use crate::model::to_json;
 
 /// Text sizes the settings dialog offers, in points.
 pub const TEXT_SIZES: RangeInclusive<u16> = 12..=22;
+/// Where collections go when the setting is left empty, under the home folder.
+pub const DEFAULT_COLLECTIONS_DIR: &str = "Documents/beeline";
+
 /// Request timeouts the settings dialog accepts, in seconds.
 pub const TIMEOUT_SECS: RangeInclusive<u64> = 1..=600;
 
@@ -98,6 +102,9 @@ pub struct Settings {
     pub text_size: u16,
     /// How long a request may take in total before it is given up.
     pub request_timeout_secs: u64,
+    /// The folder new collections are created in, one subfolder each.
+    /// Empty means the default, `~/Documents/beeline`; `~/` is the home folder.
+    pub collections_dir: String,
 }
 
 impl Default for Settings {
@@ -108,6 +115,7 @@ impl Default for Settings {
             mono: MonoFont::default(),
             text_size: 16,
             request_timeout_secs: 30,
+            collections_dir: String::new(),
         }
     }
 }
@@ -136,6 +144,32 @@ impl Settings {
 
     pub fn timeout(&self) -> Duration {
         Duration::from_secs(self.request_timeout_secs)
+    }
+
+    /// The collections folder as a path, given the home folder.
+    pub fn collections_dir(&self, home: &Path) -> PathBuf {
+        let dir = self.collections_dir.trim();
+        if dir.is_empty() {
+            home.join(DEFAULT_COLLECTIONS_DIR)
+        } else if let Some(rest) = dir.strip_prefix("~/") {
+            home.join(rest)
+        } else if dir == "~" {
+            home.to_path_buf()
+        } else {
+            PathBuf::from(dir)
+        }
+    }
+
+    /// Why a typed collections folder can't be used, if it can't. It must
+    /// be a full path (or start with `~/`) so it doesn't depend on where
+    /// the app was started from.
+    pub fn collections_dir_problem(dir: &str) -> Option<&'static str> {
+        let dir = dir.trim();
+        if dir.is_empty() || dir == "~" || dir.starts_with("~/") || Path::new(dir).is_absolute() {
+            None
+        } else {
+            Some("Use a full path, such as ~/Documents/beeline")
+        }
     }
 }
 
@@ -182,8 +216,31 @@ mod tests {
             mono: MonoFont::Plex,
             text_size: 14,
             request_timeout_secs: 90,
+            collections_dir: "~/api".into(),
         };
         assert_eq!(Settings::from_json(&s.to_json()), s);
+    }
+
+    #[test]
+    fn collections_dir_defaults_and_expands_home() {
+        let home = Path::new("/Users/bee");
+        let mut s = Settings::default();
+        assert_eq!(
+            s.collections_dir(home),
+            PathBuf::from("/Users/bee/Documents/beeline")
+        );
+        s.collections_dir = "~/api".into();
+        assert_eq!(s.collections_dir(home), PathBuf::from("/Users/bee/api"));
+        s.collections_dir = "/srv/api".into();
+        assert_eq!(s.collections_dir(home), PathBuf::from("/srv/api"));
+    }
+
+    #[test]
+    fn collections_dir_must_be_a_full_path() {
+        assert!(Settings::collections_dir_problem("").is_none());
+        assert!(Settings::collections_dir_problem("~/api").is_none());
+        assert!(Settings::collections_dir_problem("/srv/api").is_none());
+        assert!(Settings::collections_dir_problem("api").is_some());
     }
 
     #[test]

@@ -405,14 +405,20 @@ impl App {
     /// First run: create the Default collection under ~/Documents/beeline
     /// and fill it with the examples.
     fn open_default_collection(&mut self) {
-        let Some(home) = std::env::var_os("HOME") else {
+        let Some(base) = self.collections_dir() else {
             return;
         };
-        let root = PathBuf::from(home).join("Documents/beeline/Default");
+        let root = base.join("Default");
         match seed::write_examples(&root) {
             Ok(()) => self.open_collection(root),
             Err(e) => self.notify(e, true),
         }
+    }
+
+    /// The folder collections are created in, from the settings.
+    fn collections_dir(&self) -> Option<PathBuf> {
+        let home = PathBuf::from(std::env::var_os("HOME")?);
+        Some(self.settings.collections_dir(&home))
     }
 
     fn notify(&mut self, text: impl Into<String>, error: bool) {
@@ -930,16 +936,17 @@ impl App {
                     return self.guard(Then::OpenCollection(root));
                 }
             }
-            Action::NewCollection => {
-                let mut dialog =
-                    rfd::FileDialog::new().set_title("Choose where the collection goes");
-                if let Some(c) = &self.collection {
-                    dialog = dialog.set_directory(&c.root);
-                }
-                if let Some(parent) = dialog.pick_folder() {
-                    self.open_name(NameFor::NewCollection(parent), "");
-                }
-            }
+            // New collections always go in the collections folder, so they
+            // never end up nested inside another collection.
+            Action::NewCollection => match self.collections_dir() {
+                Some(base) => match fs::create_dir_all(&base) {
+                    Ok(()) => self.open_name(NameFor::NewCollection(base), ""),
+                    Err(e) => {
+                        self.notify(format!("Could not create {}: {e}", base.display()), true)
+                    }
+                },
+                None => self.notify("No home folder to keep collections in", true),
+            },
             Action::RenameCollection(root) => {
                 let current = display_name(&root);
                 self.open_name(NameFor::RenameCollection(root), &current);
@@ -1261,6 +1268,10 @@ impl App {
             *error = Some("The timeout must be from 1 to 600 seconds".into());
             return;
         }
+        if let Some(problem) = Settings::collections_dir_problem(&draft.collections_dir) {
+            *error = Some(problem.into());
+            return;
+        }
         draft.request_timeout_secs = secs;
         let saved = draft.clone().clamped();
         match save_settings(&saved) {
@@ -1446,6 +1457,13 @@ impl App {
             dialog::Msg::SettingsSize(size) => {
                 if let Some(Modal::Settings { draft, .. }) = &mut self.modal {
                     draft.text_size = size;
+                }
+                Task::none()
+            }
+            dialog::Msg::SettingsCollectionsDir(text) => {
+                if let Some(Modal::Settings { draft, error, .. }) = &mut self.modal {
+                    draft.collections_dir = text;
+                    *error = None;
                 }
                 Task::none()
             }
