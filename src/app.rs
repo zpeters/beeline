@@ -1524,8 +1524,8 @@ impl App {
         ]
         .spacing(8);
         let request = column![
-            strip,
             header,
+            strip,
             editor::view(
                 &doc.req,
                 doc.tab,
