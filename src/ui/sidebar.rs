@@ -86,11 +86,7 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
             .into(),
         None => text(title).size(theme::heading_px()).into(),
     };
-    let mut header = column![name].spacing(2);
-    if let Some(root) = p.root {
-        header = header.push(text(root.display().to_string()).size(theme::small_px()));
-    }
-    let mut col = column![header].spacing(10);
+    let mut col = column![name].spacing(10);
 
     let Some(root) = p.root else {
         col = col.push(text(

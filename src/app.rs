@@ -1537,6 +1537,15 @@ impl App {
         };
         let current = self.collection.as_ref().map(|c| c.root.as_path());
         let mut items: Vec<Element<'_, Message>> = Vec::new();
+        if let Some(root) = current {
+            items.push(
+                text(root.display().to_string())
+                    .size(theme::small_px())
+                    .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
+                    .into(),
+            );
+            items.push(text("").into());
+        }
         for recent in &self.recents {
             let mark = if Some(recent.as_path()) == current {
                 "✓ "
