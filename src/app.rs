@@ -211,6 +211,8 @@ pub struct App {
     settings: Settings,
     /// Recently used collections, newest first.
     recents: Vec<PathBuf>,
+    /// The collection menu, open at this point under the collection name.
+    collection_menu: Option<Point>,
     /// The operating system's light or dark mode, for the System theme.
     system_mode: Mode,
     /// Set when a dialog opens that needs its name field focused.
@@ -273,6 +275,7 @@ impl App {
             modal: None,
             settings,
             recents: Vec::new(),
+            collection_menu: None,
             system_mode: Mode::None,
             focus_name: false,
             after_save: None,
@@ -734,8 +737,12 @@ impl App {
 
     fn sidebar_action(&mut self, action: sidebar::Action) -> Task<Message> {
         use sidebar::Action;
-        if !matches!(action, Action::Enter(_) | Action::Exit(_)) {
+        if !matches!(
+            action,
+            Action::Enter(_) | Action::Exit(_) | Action::ToggleCollectionMenu
+        ) {
             self.context = None;
+            self.collection_menu = None;
         }
         match action {
             Action::OpenCollection => {
@@ -797,6 +804,12 @@ impl App {
             }
             Action::EditEnv => self.edit_env(),
             Action::Settings => self.open_settings(),
+            Action::ToggleCollectionMenu => {
+                self.collection_menu = match self.collection_menu {
+                    Some(_) => None,
+                    None => Some(self.cursor),
+                };
+            }
             Action::SwitchCollection(root) => {
                 if self.collection.as_ref().is_none_or(|c| c.root != root) {
                     return self.guard(Then::OpenCollection(root));
@@ -961,6 +974,7 @@ impl App {
             Message::MouseReleased => self.finish_drag(),
             Message::CloseContext => {
                 self.context = None;
+                self.collection_menu = None;
                 Task::none()
             }
             Message::Tabs(msg) => self.tab_msg(msg),
@@ -1333,6 +1347,9 @@ impl App {
         if let Some((path, at)) = &self.context {
             layers.push(self.context_menu(path, *at));
         }
+        if let Some(at) = self.collection_menu {
+            layers.push(self.collection_menu_view(at));
+        }
         if let Some(modal) = &self.modal {
             layers.push(self.modal_view(modal));
         }
@@ -1351,7 +1368,6 @@ impl App {
             expanded: &self.expanded,
             drop: self.drop_folder(),
             dragging: self.drag.as_deref(),
-            recents: &self.recents,
         })
         .map(Message::Sidebar);
         container(side)
@@ -1476,6 +1492,65 @@ impl App {
     }
 
     /// A context menu at `at`. A click anywhere outside it closes it.
+    /// The menu under the collection name: recents, then the current
+    /// collection's Rename and Move to Trash, and New collection.
+    fn collection_menu_view(&self, at: Point) -> Element<'_, Message> {
+        let item = |label: String, action: sidebar::Action| -> Element<'_, Message> {
+            theme::button(text(label).size(theme::text_px()))
+                .style(theme::text_button)
+                .width(Fill)
+                .on_press(Message::Sidebar(action))
+                .into()
+        };
+        let current = self.collection.as_ref().map(|c| c.root.as_path());
+        let mut items: Vec<Element<'_, Message>> = Vec::new();
+        for recent in &self.recents {
+            let mark = if Some(recent.as_path()) == current {
+                "✓ "
+            } else {
+                ""
+            };
+            items.push(item(
+                format!("{mark}{}", collection::stem(recent)),
+                sidebar::Action::SwitchCollection(recent.clone()),
+            ));
+        }
+        if !self.recents.is_empty() {
+            items.push(text("").into());
+        }
+        items.push(item(
+            "New collection…".into(),
+            sidebar::Action::NewCollection,
+        ));
+        if let Some(root) = current {
+            items.push(item(
+                "Rename…".into(),
+                sidebar::Action::RenameCollection(root.to_path_buf()),
+            ));
+            items.push(item(
+                "Move to Trash…".into(),
+                sidebar::Action::DeleteCollection(root.to_path_buf()),
+            ));
+        }
+        let card = container(column(items).spacing(2))
+            .style(theme::card)
+            .padding(6)
+            .width(240);
+        let placed = container(card)
+            .padding(iced::Padding {
+                top: at.y + 12.0,
+                right: 0.0,
+                bottom: 0.0,
+                left: 12.0,
+            })
+            .width(Fill)
+            .height(Fill);
+        mouse_area(placed)
+            .on_press(Message::CloseContext)
+            .on_right_press(Message::CloseContext)
+            .into()
+    }
+
     fn context_menu(&self, path: &Path, at: Point) -> Element<'_, Message> {
         let item = |label: &'static str, action: sidebar::Action| -> Element<'_, Message> {
             theme::button(text(label).size(theme::text_px()))
