@@ -89,10 +89,11 @@ the params table rebuilds the URL query from the enabled params. The
 params list is also saved in the file so disabled params survive.
 
 **Variables.** `{{name}}` is replaced with the selected environment's
-value. Whitespace inside the braces is allowed (`{{ name }}`). Unknown
-variables are left as written, so the problem stays visible in the
-request. Substitution happens only at send time; the editor always shows
-the raw text.
+value. Whitespace inside the braces is allowed (`{{ name }}`). An unknown
+variable in the URL is an error that names it (otherwise it surfaces as
+a confusing DNS error). In headers, body and auth, unknown variables are
+sent as written. Substitution happens only at send time; the editor
+always shows the raw text.
 
 **Resolving a request** (pure function): interpolate everything, keep
 enabled headers, add the auth header (unless an `Authorization` header is
