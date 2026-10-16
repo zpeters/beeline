@@ -20,6 +20,8 @@ pub enum Node {
     Request {
         name: String,
         path: PathBuf,
+        /// The request's method, for the tree. "GET" if the file can't be read.
+        method: String,
     },
 }
 
@@ -61,7 +63,8 @@ fn scan_dir(dir: &Path, is_root: bool) -> Result<Vec<Node>, String> {
             });
         } else if path.extension().is_some_and(|e| e == EXT) {
             let name = stem(&path);
-            requests.push(Node::Request { name, path });
+            let method = read_request(&path).map_or_else(|_| "GET".into(), |r| r.method);
+            requests.push(Node::Request { name, path, method });
         }
     }
     let key = |n: &Node| match n {
@@ -337,6 +340,23 @@ mod tests {
             panic!("expected folder")
         };
         assert_eq!(names(children), vec!["list"]);
+    }
+
+    #[test]
+    fn scan_reads_each_request_method() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("make.json"), r#"{"method": "POST"}"#);
+        touch(&dir.path().join("plain.json"), "{}");
+        touch(&dir.path().join("broken.json"), "{not json");
+        let tree = scan(dir.path()).unwrap();
+        let methods: Vec<&str> = tree
+            .iter()
+            .map(|n| match n {
+                Node::Request { method, .. } => method.as_str(),
+                Node::Folder { .. } => "",
+            })
+            .collect();
+        assert_eq!(methods, vec!["GET", "POST", "GET"]);
     }
 
     #[test]

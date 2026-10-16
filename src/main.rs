@@ -11,6 +11,7 @@ mod resolve;
 mod samples;
 mod seed;
 mod settings;
+mod spark;
 mod tabs;
 mod ui;
 mod vars;

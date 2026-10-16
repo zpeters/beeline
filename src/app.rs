@@ -1,7 +1,7 @@
 //! Top-level app state, messages, update and frame layout. Widgets live in
 //! `ui/`; this module decides what happens when they report something.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -18,6 +18,7 @@ use crate::collection::{self, Node};
 use crate::model::{Environment, KeyValue, RequestFile};
 use crate::recents;
 use crate::settings::{self, Settings};
+use crate::spark::{self, Series};
 use crate::tabs::Tabs;
 use crate::ui::tab_strip;
 use crate::ui::{dialog, editor, kv, response, sidebar, theme};
@@ -215,6 +216,13 @@ pub struct App {
     collection_menu: Option<Point>,
     /// The environment menu, open at this point under the environment name.
     env_menu: Option<Point>,
+    /// Response times per request file, for the sidebar sparklines. Kept
+    /// for this session only; never saved.
+    sparks: HashMap<PathBuf, Series>,
+    /// When each request's newest response arrived, to ease its point in.
+    arrived: HashMap<PathBuf, Instant>,
+    /// When the app started; animations measure their phase from it.
+    epoch: Instant,
     /// The operating system's light or dark mode, for the System theme.
     system_mode: Mode,
     /// Set when a dialog opens that needs its name field focused.
@@ -249,6 +257,9 @@ pub enum Message {
     Dialog(dialog::Msg),
     Tabs(tab_strip::Msg),
     SystemTheme(Mode),
+    /// A redraw tick while a sparkline animates. Nothing to update; the
+    /// view reads the clock.
+    Frame,
     NewTab,
     CloseTab,
     Send,
@@ -279,6 +290,9 @@ impl App {
             recents: Vec::new(),
             collection_menu: None,
             env_menu: None,
+            sparks: HashMap::new(),
+            arrived: HashMap::new(),
+            epoch: Instant::now(),
             system_mode: Mode::None,
             focus_name: false,
             after_save: None,
@@ -740,6 +754,23 @@ impl App {
     /// Points every open tab that was at `from` (or inside it) at its new
     /// place after a rename or move.
     fn retarget(&mut self, from: &Path, to: &Path) {
+        // Sparklines follow their request to its new path.
+        let keys: Vec<PathBuf> = self
+            .sparks
+            .keys()
+            .chain(self.arrived.keys())
+            .cloned()
+            .collect();
+        for key in keys {
+            if let Some(new) = collection::moved(&key, from, to) {
+                if let Some(series) = self.sparks.remove(&key) {
+                    self.sparks.insert(new.clone(), series);
+                }
+                if let Some(at) = self.arrived.remove(&key) {
+                    self.arrived.insert(new, at);
+                }
+            }
+        }
         for doc in self.docs.iter_mut() {
             if let Some(open) = &doc.open
                 && let Some(moved) = collection::moved(open, from, to)
@@ -1005,6 +1036,7 @@ impl App {
                 Task::none()
             }
             Message::Tabs(msg) => self.tab_msg(msg),
+            Message::Frame => Task::none(),
             Message::SystemTheme(mode) => {
                 self.system_mode = mode;
                 Task::none()
@@ -1024,6 +1056,18 @@ impl App {
                 if let Some(doc) = self.docs.iter_mut().find(|d| d.id == id)
                     && doc.generation == generation
                 {
+                    // A response with a status adds a point to the request's
+                    // sparkline. A transport error has no time to show.
+                    if let (Ok(resp), Some(path)) = (&res, &doc.open) {
+                        self.sparks
+                            .entry(path.clone())
+                            .or_default()
+                            .push(spark::Sample {
+                                ms: resp.elapsed.as_secs_f32() * 1000.0,
+                                ok: resp.status < 400,
+                            });
+                        self.arrived.insert(path.clone(), Instant::now());
+                    }
                     doc.pending = false;
                     doc.result = Some(res.map(response::View::new));
                 }
@@ -1310,7 +1354,21 @@ impl App {
             event::listen_with(shortcut),
             window::close_requests().map(Message::CloseRequested),
             iced::system::theme_changes().map(Message::SystemTheme),
+            if self.animating() {
+                window::frames().map(|_| Message::Frame)
+            } else {
+                Subscription::none()
+            },
         ])
+    }
+
+    /// True while a sparkline moves: a point easing in, or a send in flight.
+    fn animating(&self) -> bool {
+        self.docs.iter().any(|d| d.pending && d.open.is_some())
+            || self
+                .arrived
+                .values()
+                .any(|at| at.elapsed() < Duration::from_millis(400))
     }
 
     // --- drawing ---
@@ -1397,6 +1455,17 @@ impl App {
             expanded: &self.expanded,
             drop: self.drop_folder(),
             dragging: self.drag.as_deref(),
+            hovered: self.drop_target.as_deref(),
+            sparks: &self.sparks,
+            arrived: &self.arrived,
+            pending: self
+                .docs
+                .iter()
+                .filter(|d| d.pending)
+                .filter_map(|d| d.open.as_deref())
+                .collect(),
+            now: Instant::now(),
+            epoch: self.epoch,
         })
         .map(Message::Sidebar);
         container(side)

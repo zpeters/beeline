@@ -137,6 +137,14 @@ pub fn pick(theme: &Theme, status: pick_list::Status) -> pick_list::Style {
 
 // --- containers ---
 
+/// Secondary text: the normal text colour at reduced strength, for
+/// labels that support the data rather than compete with it.
+pub fn muted(theme: &Theme) -> text::Style {
+    text::Style {
+        color: Some(theme.palette().text.scale_alpha(0.5)),
+    }
+}
+
 /// A rounded panel with a visible border.
 pub fn card(theme: &Theme) -> container::Style {
     let mut s = container::bordered_box(theme);
