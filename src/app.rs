@@ -1525,11 +1525,15 @@ impl App {
     /// collection's Rename and Move to Trash, and New collection.
     fn collection_menu_view(&self, at: Point) -> Element<'_, Message> {
         let item = |label: String, action: sidebar::Action| -> Element<'_, Message> {
-            theme::button(text(label).size(theme::text_px()))
-                .style(theme::text_button)
-                .width(Fill)
-                .on_press(Message::Sidebar(action))
-                .into()
+            theme::button(
+                text(label)
+                    .size(theme::text_px())
+                    .wrapping(iced::widget::text::Wrapping::WordOrGlyph),
+            )
+            .style(theme::text_button)
+            .width(Fill)
+            .on_press(Message::Sidebar(action))
+            .into()
         };
         let current = self.collection.as_ref().map(|c| c.root.as_path());
         let mut items: Vec<Element<'_, Message>> = Vec::new();
@@ -1584,11 +1588,15 @@ impl App {
     /// menu: the choices first, then the actions for the selected one.
     fn env_menu_view(&self, at: Point) -> Element<'_, Message> {
         let item = |label: String, action: sidebar::Action| -> Element<'_, Message> {
-            theme::button(text(label).size(theme::text_px()))
-                .style(theme::text_button)
-                .width(Fill)
-                .on_press(Message::Sidebar(action))
-                .into()
+            theme::button(
+                text(label)
+                    .size(theme::text_px())
+                    .wrapping(iced::widget::text::Wrapping::WordOrGlyph),
+            )
+            .style(theme::text_button)
+            .width(Fill)
+            .on_press(Message::Sidebar(action))
+            .into()
         };
         let mut items: Vec<Element<'_, Message>> = Vec::new();
         let none_mark = if self.env.is_none() { "✓ " } else { "" };
@@ -1611,14 +1619,13 @@ impl App {
         }
         items.push(text("").into());
         items.push(item("New environment…".into(), sidebar::Action::NewEnv));
-        if let Some(name) = &self.env {
-            items.push(item("Edit…".into(), sidebar::Action::EditEnv));
-            if let Some(path) = self.env_path(name) {
-                items.push(item(
-                    "Move to Trash…".into(),
-                    sidebar::Action::DeleteEnv(path),
-                ));
-            }
+        if let Some(name) = &self.env
+            && let Some(path) = self.env_path(name)
+        {
+            items.push(item(
+                "Move to Trash…".into(),
+                sidebar::Action::DeleteEnv(path),
+            ));
         }
         let card = container(column(items).spacing(2))
             .style(theme::card)
@@ -1641,11 +1648,15 @@ impl App {
 
     fn context_menu(&self, path: &Path, at: Point) -> Element<'_, Message> {
         let item = |label: &'static str, action: sidebar::Action| -> Element<'_, Message> {
-            theme::button(text(label).size(theme::text_px()))
-                .style(theme::text_button)
-                .width(Fill)
-                .on_press(Message::Sidebar(action))
-                .into()
+            theme::button(
+                text(label)
+                    .size(theme::text_px())
+                    .wrapping(iced::widget::text::Wrapping::WordOrGlyph),
+            )
+            .style(theme::text_button)
+            .width(Fill)
+            .on_press(Message::Sidebar(action))
+            .into()
         };
         let items: Vec<Element<'_, Message>> = if path.is_dir() {
             vec![

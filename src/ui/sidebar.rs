@@ -111,7 +111,7 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
             .style(theme::text_button)
             .width(Fill)
             .on_press(Action::ToggleEnvMenu),
-            theme::button("Edit environment").on_press_maybe(p.env.map(|_| Action::EditEnv)),
+            theme::button("Edit").on_press_maybe(p.env.map(|_| Action::EditEnv)),
         ]
         .spacing(6)
         .align_y(iced::Alignment::Center),
