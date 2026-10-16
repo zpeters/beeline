@@ -122,13 +122,6 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
         .spacing(6),
     );
 
-    let mut rows: Vec<Element<'a, Action>> = Vec::new();
-    if p.tree.is_empty() {
-        rows.push(text("No requests yet.").into());
-    }
-    tree_rows(p.tree, 0, &p, &mut rows);
-    col = col.push(scrollable(column(rows).spacing(2).width(Fill)).height(Fill));
-
     let mut choices = vec![EnvChoice::None];
     choices.extend(
         p.envs
@@ -160,6 +153,13 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
         ]
         .spacing(6),
     );
+
+    let mut rows: Vec<Element<'a, Action>> = Vec::new();
+    if p.tree.is_empty() {
+        rows.push(text("No requests yet.").into());
+    }
+    tree_rows(p.tree, 0, &p, &mut rows);
+    col = col.push(scrollable(column(rows).spacing(2).width(Fill)).height(Fill));
 
     col.push(gear()).height(Fill).into()
 }
