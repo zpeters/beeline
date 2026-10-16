@@ -7,6 +7,7 @@ mod http;
 mod model;
 mod query;
 mod resolve;
+mod seed;
 mod ui;
 mod vars;
 

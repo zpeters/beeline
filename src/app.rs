@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::collection::{self, Node};
 use crate::model::{Environment, KeyValue, RequestFile};
 use crate::ui::{dialog, editor, kv, response, sidebar, theme};
-use crate::{http, resolve};
+use crate::{http, resolve, seed};
 
 const NOTICE_TIME: Duration = Duration::from_secs(4);
 /// The two resizable panes: the collection sidebar and the request/response area.
@@ -199,19 +199,19 @@ impl App {
             drop_target: None,
             press_at: Point::ORIGIN,
         };
+        // No state file means this is the first run.
+        let first_run = state_path().is_some_and(|p| !p.exists());
         let saved = load_state();
         match start {
             Some(start) => match start.canonicalize() {
                 Ok(root) if root.is_dir() => app.open_collection(root),
                 _ => app.notify(format!("Not a folder: {}", start.display()), true),
             },
-            None => {
-                if let Some(root) = saved.collection
-                    && root.is_dir()
-                {
-                    app.open_collection(root);
-                }
-            }
+            None => match saved.collection {
+                Some(root) if root.is_dir() => app.open_collection(root),
+                _ if first_run => app.open_default_collection(),
+                _ => {}
+            },
         }
         if let Some(name) = saved.env
             && app.has_env(&name)
@@ -219,6 +219,19 @@ impl App {
             app.select_env(Some(name));
         }
         (app, Task::none())
+    }
+
+    /// First run: create the Default collection under ~/Documents/beeline
+    /// and fill it with the examples.
+    fn open_default_collection(&mut self) {
+        let Some(home) = std::env::var_os("HOME") else {
+            return;
+        };
+        let root = PathBuf::from(home).join("Documents/beeline/Default");
+        match seed::write_examples(&root) {
+            Ok(()) => self.open_collection(root),
+            Err(e) => self.notify(e, true),
+        }
     }
 
     fn notify(&mut self, text: impl Into<String>, error: bool) {

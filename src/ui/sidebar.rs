@@ -70,7 +70,10 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
         .and_then(|r| r.file_name())
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "beeline".into());
-    let header = row![text(title).size(theme::HEADING)];
+    let mut header = column![text(title).size(theme::HEADING)].spacing(2);
+    if let Some(root) = p.root {
+        header = header.push(text(root.display().to_string()).size(theme::SMALL));
+    }
     let mut col = column![header].spacing(10);
 
     let Some(root) = p.root else {
