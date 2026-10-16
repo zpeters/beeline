@@ -1,0 +1,30 @@
+meta {
+  name: Create order
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/orders
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "sku": "BEE-1",
+    "quantity": 2
+  }
+}
+
+vars:pre-request {
+  baseUrl: https://staging.example.test/api
+}
+
+assert {
+  res.status: eq 201
+}

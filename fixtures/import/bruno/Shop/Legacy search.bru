@@ -1,0 +1,17 @@
+meta {
+  name: Legacy search
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/search
+  body: none
+}
+
+query {
+  q: bee
+  filter: <Filter>
+    <Tag>open</Tag>
+  </Filter>
+}

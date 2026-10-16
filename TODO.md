@@ -13,7 +13,8 @@
   endpoints are copied by hand. Start with a few popular doc layouts.
   Down the road; not part of the basic full client.
 
-- **Import/export common formats.** For example OpenAPI, Postman
-  collections, Bruno, Insomnia, HAR and cURL. Down the road.
+- **Export, and more import formats.** Import of cURL, OpenAPI 3, Postman
+  v2.1 and Bruno is done. Still to do: export (Postman v2.1 first), and
+  importing Insomnia and HAR.
 
 - github

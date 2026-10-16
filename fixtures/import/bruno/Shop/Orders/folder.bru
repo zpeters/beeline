@@ -1,0 +1,13 @@
+meta {
+  name: Orders
+}
+
+auth {
+  mode: apikey
+}
+
+auth:apikey {
+  key: X-Api-Key
+  value: {{apiKey}}
+  placement: header
+}

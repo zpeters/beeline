@@ -902,6 +902,18 @@ impl App {
                     }
                 }
             }
+            Action::ImportBruno => {
+                if let Some(c) = &self.collection {
+                    let root = c.root.clone();
+                    let picked = rfd::FileDialog::new()
+                        .set_title("Import a Bruno collection folder")
+                        .pick_folder();
+                    if let Some(dir) = picked {
+                        let result = import::read_bruno(&dir);
+                        self.finish_import(&root, result);
+                    }
+                }
+            }
             Action::ImportCurl => {
                 self.curl_paste = text_editor::Content::new();
                 self.modal = Some(Modal::ImportCurl { error: None });
@@ -1183,9 +1195,13 @@ impl App {
     fn import_file(&mut self, root: &Path, file: &Path) {
         let result = fs::read_to_string(file)
             .map_err(|e| format!("Could not read {}: {e}", file.display()))
-            .and_then(|text| import::parse_file(&text))
-            .and_then(|imported| import::write(root, &imported));
-        match result {
+            .and_then(|text| import::parse_file(&text));
+        self.finish_import(root, result);
+    }
+
+    /// Writes a parsed import into a new folder and shows it open in the tree.
+    fn finish_import(&mut self, root: &Path, parsed: Result<import::Imported, String>) {
+        match parsed.and_then(|imported| import::write(root, &imported)) {
             Ok((folder, count)) => {
                 self.expanded.insert(folder.clone());
                 self.reload_tree();
@@ -1759,6 +1775,10 @@ impl App {
             items.push(item("Reload".into(), sidebar::Action::Reload));
             items.push(item("Import cURL…".into(), sidebar::Action::ImportCurl));
             items.push(item("Import file…".into(), sidebar::Action::ImportFile));
+            items.push(item(
+                "Import Bruno folder…".into(),
+                sidebar::Action::ImportBruno,
+            ));
             items.push(item(
                 "Rename…".into(),
                 sidebar::Action::RenameCollection(root.to_path_buf()),

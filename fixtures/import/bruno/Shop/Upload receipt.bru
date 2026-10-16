@@ -1,0 +1,15 @@
+meta {
+  name: Upload receipt
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/receipts
+  body: multipartForm
+  auth: inherit
+}
+
+body:multipart-form {
+  file: @file(/tmp/receipt.pdf)
+}

@@ -1,0 +1,23 @@
+meta {
+  name: Viewer
+  type: graphql
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/graphql
+  body: graphql
+  auth: inherit
+}
+
+body:graphql {
+  query Viewer($id: ID!) {
+    user(id: $id) { name }
+  }
+}
+
+body:graphql:vars {
+  {
+    "id": "1"
+  }
+}

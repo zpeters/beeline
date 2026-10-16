@@ -1,0 +1,17 @@
+meta {
+  name: Log in
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/login
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  username: bee
+  password: {{password}}
+  ~remember: true
+}

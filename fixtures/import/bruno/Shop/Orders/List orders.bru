@@ -1,0 +1,21 @@
+meta {
+  name: List orders
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/orders?status=open
+  body: none
+  auth: inherit
+}
+
+params:query {
+  status: open
+  ~page: 2
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

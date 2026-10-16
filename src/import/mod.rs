@@ -1,6 +1,7 @@
 //! Importing requests from other tools. Each format's parser is pure and
 //! returns an [`Imported`]; [`write`] puts it on disk inside a collection.
 
+pub mod bruno;
 pub mod curl;
 pub mod openapi;
 pub mod postman;
@@ -57,6 +58,83 @@ pub fn parse_file(text: &str) -> Result<Imported, String> {
         return postman::parse(&doc);
     }
     Err("Not an OpenAPI 3 spec or a Postman collection".into())
+}
+
+/// Reads a Bruno collection folder: `bruno.json` names it, `collection.bru`
+/// and each `folder.bru` give inherited settings, and every other `.bru`
+/// file with a method block is a request. `environments/` is skipped.
+pub fn read_bruno(dir: &Path) -> Result<Imported, String> {
+    let manifest = dir.join("bruno.json");
+    if !manifest.is_file() {
+        return Err(format!(
+            "{} is not a Bruno collection (no bruno.json)",
+            dir.display()
+        ));
+    }
+    let name = fs::read_to_string(&manifest)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("name").and_then(|n| n.as_str()).map(str::to_string))
+        .or_else(|| dir.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "Bruno import".into());
+    let root = layer(&bruno::Inherited::default(), &dir.join("collection.bru"));
+    let mut items = Vec::new();
+    walk_bruno(dir, &[], &root, true, &mut items)?;
+    Ok(Imported { name, items })
+}
+
+/// `parent` with the settings file at `path` layered on, if there is one.
+fn layer(parent: &bruno::Inherited, path: &Path) -> bruno::Inherited {
+    match fs::read_to_string(path) {
+        Ok(text) => bruno::inherit(parent, &text),
+        Err(_) => parent.clone(),
+    }
+}
+
+fn walk_bruno(
+    dir: &Path,
+    folders: &[String],
+    inherited: &bruno::Inherited,
+    is_root: bool,
+    out: &mut Vec<Item>,
+) -> Result<(), String> {
+    let mut entries: Vec<PathBuf> = fs::read_dir(dir)
+        .map_err(|e| format!("Could not read {}: {e}", dir.display()))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .collect();
+    entries.sort();
+    for path in entries {
+        let file_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if file_name.starts_with('.') || file_name == "node_modules" {
+            continue;
+        }
+        if path.is_dir() {
+            if is_root && file_name == "environments" {
+                continue;
+            }
+            let inner = layer(inherited, &path.join("folder.bru"));
+            let mut nested = folders.to_vec();
+            nested.push(file_name);
+            walk_bruno(&path, &nested, &inner, false, out)?;
+        } else if path.extension().is_some_and(|e| e == "bru")
+            && file_name != "collection.bru"
+            && file_name != "folder.bru"
+        {
+            let text = fs::read_to_string(&path)
+                .map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+            if let Some((name, req)) = bruno::request(&text, &collection::stem(&path), inherited) {
+                out.push(Item {
+                    folders: folders.to_vec(),
+                    name,
+                    req,
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Writes one request at the top level of `root`. Returns its path.
@@ -316,11 +394,120 @@ mod fixtures {
         assert_eq!(health.auth.username, "admin");
     }
 
+    fn bruno_shop() -> Imported {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/import/bruno/Shop");
+        read_bruno(&dir).unwrap()
+    }
+
+    #[test]
+    fn bruno_shop_collection() {
+        let imported = bruno_shop();
+        assert_eq!(imported.name, "Shop (Bruno)");
+        let paths: Vec<String> = imported
+            .items
+            .iter()
+            .map(|i| [i.folders.clone(), vec![i.name.clone()]].concat().join("/"))
+            .collect();
+        assert_eq!(
+            paths,
+            vec![
+                "Legacy search",
+                "Log in",
+                "Orders/Create order",
+                "Orders/Get order",
+                "Orders/List orders",
+                "Upload receipt",
+                "Viewer",
+            ]
+        );
+        let req = |name: &str| &imported.items.iter().find(|i| i.name == name).unwrap().req;
+
+        let legacy = req("Legacy search");
+        assert_eq!(
+            legacy.params[1].value,
+            "<Filter>\n<Tag>open</Tag>\n</Filter>"
+        );
+
+        let login = req("Log in");
+        assert_eq!(login.auth.kind, AuthKind::None);
+        assert_eq!(login.body.kind, BodyKind::Form);
+        assert!(!login.body.fields[2].enabled);
+        assert_eq!(
+            login.headers,
+            vec![KeyValue::new("Accept", "application/json")]
+        );
+
+        let create = req("Create order");
+        assert_eq!(
+            create.auth.kind,
+            AuthKind::None,
+            "folder API key is a header"
+        );
+        assert!(
+            create
+                .headers
+                .contains(&KeyValue::new("X-Api-Key", "{{apiKey}}"))
+        );
+        assert!(
+            create
+                .headers
+                .contains(&KeyValue::new("Content-Type", "application/json"))
+        );
+        assert!(create.vars.contains(&KeyValue::new(
+            "baseUrl",
+            "https://staging.example.test/api"
+        )));
+        assert!(create.body.text.starts_with("{\n  \"sku\""));
+
+        let get = req("Get order");
+        assert_eq!(get.url, "{{baseUrl}}/orders/{{orderId}}");
+        assert!(get.vars.contains(&KeyValue::new("orderId", "42")));
+
+        let list = req("List orders");
+        assert_eq!(list.params.len(), 2);
+        assert!(!list.params[1].enabled);
+
+        let upload = req("Upload receipt");
+        assert_eq!(upload.body.kind, BodyKind::None, "multipart skipped");
+        assert_eq!(upload.auth.kind, AuthKind::Bearer, "collection auth");
+
+        assert!(req("Viewer").body.text.contains("\"query\""));
+    }
+
+    /// Parses every Bruno collection under `$BEELINE_BRUNO_DIR`, so real
+    /// exports can be checked without copying them into the repo:
+    /// `BEELINE_BRUNO_DIR=~/api cargo test real_bruno -- --ignored --nocapture`
+    #[test]
+    #[ignore = "needs BEELINE_BRUNO_DIR pointing at real Bruno collections"]
+    fn real_bruno_collections_parse() {
+        let base =
+            PathBuf::from(std::env::var("BEELINE_BRUNO_DIR").expect("set BEELINE_BRUNO_DIR"));
+        let mut manifests = Vec::new();
+        let mut stack = vec![base];
+        while let Some(dir) = stack.pop() {
+            for entry in fs::read_dir(&dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() && !path.ends_with("node_modules") {
+                    stack.push(path);
+                } else if path.file_name().is_some_and(|n| n == "bruno.json") {
+                    manifests.push(dir.clone());
+                }
+            }
+        }
+        manifests.sort();
+        assert!(!manifests.is_empty(), "no bruno.json found");
+        for dir in manifests {
+            let imported = read_bruno(&dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
+            println!("{:>4} requests  {}", imported.items.len(), dir.display());
+        }
+    }
+
     #[test]
     fn fixtures_write_and_scan_back() {
         let dir = tempfile::tempdir().unwrap();
         write(dir.path(), &petstore()).unwrap();
         write(dir.path(), &shop()).unwrap();
-        assert_eq!(request_count(&scan(dir.path()).unwrap()), 4 + 6);
+        write(dir.path(), &bruno_shop()).unwrap();
+        assert_eq!(request_count(&scan(dir.path()).unwrap()), 4 + 6 + 7);
     }
 }

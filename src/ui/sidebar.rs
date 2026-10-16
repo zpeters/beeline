@@ -50,6 +50,8 @@ pub enum Action {
     ImportCurl,
     /// Picks an OpenAPI or Postman file to import.
     ImportFile,
+    /// Picks a Bruno collection folder to import.
+    ImportBruno,
     /// Moves an environment file to the Trash.
     DeleteEnv(PathBuf),
     /// Opens a collection picked from the recents list.

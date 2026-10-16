@@ -1,0 +1,16 @@
+headers {
+  Accept: application/json
+}
+
+auth {
+  mode: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+vars:pre-request {
+  baseUrl: https://shop.example.test/api
+  ~debug: true
+}
