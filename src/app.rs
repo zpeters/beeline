@@ -130,6 +130,8 @@ pub struct App {
     modal: Option<Modal>,
     /// Set when a dialog opens that needs its name field focused.
     focus_name: bool,
+    /// The action waiting on a scratch request being named and saved.
+    after_save: Option<Then>,
     notice: Option<Notice>,
     quitting: bool,
     /// Selected environment name and its variables.
@@ -187,6 +189,7 @@ impl App {
             result: None,
             modal: None,
             focus_name: false,
+            after_save: None,
             notice: None,
             quitting: false,
             env: None,
@@ -465,7 +468,10 @@ impl App {
                 self.saved = self.req.clone();
                 self.reload_tree();
                 self.notify("Saved", false);
-                Ok(Task::none())
+                Ok(match self.after_save.take() {
+                    Some(then) => self.run(then),
+                    None => Task::none(),
+                })
             }
             NameFor::NewEnv(root) => {
                 let path = collection::create_env(root, text)?;
@@ -498,10 +504,12 @@ impl App {
         }
         match action {
             Action::OpenCollection => {
-                if let Some(root) = rfd::FileDialog::new()
-                    .set_title("Open collection folder")
-                    .pick_folder()
-                {
+                // Start where the open collection is, if there is one.
+                let mut dialog = rfd::FileDialog::new().set_title("Open collection folder");
+                if let Some(c) = &self.collection {
+                    dialog = dialog.set_directory(&c.root);
+                }
+                if let Some(root) = dialog.pick_folder() {
                     return self.guard(Then::OpenCollection(root));
                 }
             }
@@ -783,6 +791,11 @@ impl App {
                 if self.save() {
                     self.run(then)
                 } else {
+                    // A scratch request asks for a name first. Remember the
+                    // action; it runs once the name is saved.
+                    if self.modal.is_some() {
+                        self.after_save = Some(then);
+                    }
                     Task::none()
                 }
             }
@@ -796,6 +809,7 @@ impl App {
                 if self.context.take().is_none() && self.modal.take().is_none() {
                     self.env_editor = None;
                 }
+                self.after_save = None;
                 Task::none()
             }
             dialog::Msg::NameInput(value) => {

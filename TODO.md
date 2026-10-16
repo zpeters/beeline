@@ -12,8 +12,6 @@ for design docs and past plans).
 
 ## Known gaps
 
-- "Save" on a scratch request from the unsaved-changes prompt saves it
-  but drops the action that prompted it (open another request etc.).
 - Environments cannot be renamed in the app; rename the file.
 - Environment variables are saved as a sorted map, so the editor
   re-sorts rows on save.
