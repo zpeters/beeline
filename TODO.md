@@ -15,7 +15,3 @@
 
 - **Import/export common formats.** For example OpenAPI, Postman
   collections, Bruno, Insomnia, HAR and cURL. Down the road.
-
-- vars for requests
-
-- settings dialog
