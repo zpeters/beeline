@@ -1,0 +1,8 @@
+{
+  "variables": {
+    "base": "https://jsonplaceholder.typicode.com",
+    "echo": "https://httpbin.org",
+    "postId": "1",
+    "token": "demo-token"
+  }
+}

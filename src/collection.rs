@@ -341,6 +341,34 @@ mod tests {
         assert_eq!(read_env(&prod).unwrap(), env);
     }
 
+    /// Every request in `examples/demo` parses and resolves with its
+    /// environment, so the sample collection cannot rot.
+    #[test]
+    fn example_collection_resolves() {
+        fn walk(nodes: &[Node], out: &mut Vec<PathBuf>) {
+            for n in nodes {
+                match n {
+                    Node::Folder { children, .. } => walk(children, out),
+                    Node::Request { path, .. } => out.push(path.clone()),
+                }
+            }
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/demo");
+        let envs = environments(&root).unwrap();
+        assert_eq!(envs.len(), 1);
+        let vars = read_env(&envs[0].1).unwrap().variables;
+
+        let mut paths = Vec::new();
+        walk(&scan(&root).unwrap(), &mut paths);
+        assert_eq!(paths.len(), 6);
+        for path in paths {
+            let req = read_request(&path).unwrap();
+            let r = crate::resolve::resolve(&req, &vars)
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            assert!(r.url.starts_with("https://"), "{}", r.url);
+        }
+    }
+
     #[test]
     fn maps_paths_after_a_move() {
         let from = Path::new("/c/users");

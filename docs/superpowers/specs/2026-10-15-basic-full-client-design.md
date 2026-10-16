@@ -1,7 +1,6 @@
 # beeline — basic full client
 
-Date: 2026-10-15. Status: agreed feature scope; design written overnight
-for morning review.
+Date: 2026-10-15. Status: implemented 2026-10-15; awaiting the user's review.
 
 ## Intent
 

@@ -4,20 +4,43 @@ Guidance for AI coding agents working in this repo.
 
 ## What this is
 
-beeline is a super-minimal API client desktop app, a lighter replacement
-for Bruno. The MVP sends one HTTP request and shows the response. Request
-config is meant to be plain JSON, but JSON loading and saving are NOT in
-the MVP.
+beeline is a minimal API client desktop app in the spirit of Bruno, not a
+clone. Collections are folders of plain JSON request files; environments
+supply `{{vars}}`. The current scope is in
+`docs/superpowers/specs/2026-10-15-basic-full-client-design.md`.
 
-Out of scope for now: collections, environments, auth helpers, scripting,
-a plugin system, and any cloud sync. Do not build them speculatively.
+Out of scope for now: request tabs, copy as cURL, history, scripting,
+assertions, cookies, GraphQL, websockets, file uploads, a plugin system,
+and any cloud sync. Do not build them speculatively. Future ideas live in
+`TODO.md`.
 
 ## Stack and layout
 
-- `src/main.rs` — app entry point and the egui/eframe UI.
-- `src/` — keep request building and response handling as pure functions
-  (no UI types) so they can be unit-tested. Put the HTTP call behind a
-  small function so the UI does not know how the network works.
+Pure modules (no I/O, unit-tested):
+
+- `model.rs` — the JSON file format (serde). Every field has a default.
+- `vars.rs` — `{{name}}` interpolation and unknown-name detection.
+- `query.rs` — URL query string ⇄ params table sync.
+- `resolve.rs` — request + variables → exactly what goes on the wire.
+- `format.rs` — response display helpers (pretty JSON, sizes, times).
+
+I/O modules:
+
+- `http.rs` — sends a resolved request (ureq). Tested against a local
+  socket; one `#[ignore]` live HTTPS test.
+- `collection.rs` — all filesystem access: scan, read/write requests and
+  environments, create/rename, move to Trash. Tested against temp dirs.
+
+UI (egui/eframe 0.37, immediate mode; verified by build + launch):
+
+- `app.rs` — app state, file actions, modals, frame layout.
+- `ui/editor.rs`, `ui/response.rs`, `ui/sidebar.rs`, `ui/mod.rs`
+  (shared key/value table). Widgets edit the state they are handed or
+  return actions; they do no I/O.
+
+Other:
+
+- `examples/demo/` — sample collection; a test checks it resolves.
 - `docs/superpowers/specs/` and `docs/superpowers/plans/` — design docs
   and implementation plans for past and future work. Read the relevant
   one before a large change; they record *why*, not just *what*.
@@ -77,7 +100,13 @@ work is done and green.
 ## Before making a change
 
 - The UI is egui (immediate mode). Do not add an async runtime unless a
-  feature needs it; a blocking request on a background thread is enough
-  for the MVP.
-- Runtime behavior is not verified yet. Launch the app before saying a
-  UI change works.
+  feature needs it; a blocking request on a background thread is enough.
+- egui/eframe 0.37 renamed things: `App::ui(&mut self, ui: &mut Ui, ..)`
+  replaces `update`, panels are `egui::Panel::{left,top,bottom}` and take
+  a `&mut Ui`, and `Id::new` is deprecated (`Id::unique`).
+- Keep `serde_json`'s `preserve_order` feature: it keeps response keys in
+  server order when pretty-printing.
+- The URL holds the query string; `params` mirrors it. Disabled params
+  exist only in `params`.
+- Do not take screenshots with `screencapture` on this Mac; it raises a
+  screen-recording permission prompt for the terminal.

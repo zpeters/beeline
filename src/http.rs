@@ -143,4 +143,20 @@ mod tests {
         assert_eq!(resp.status, 404);
         assert!(resp.body.is_empty());
     }
+
+    /// Real HTTPS through the demo collection's public API. Opt in with
+    /// `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "needs the internet"]
+    fn live_https_get() {
+        let resp = send(&Resolved {
+            method: "GET".into(),
+            url: "https://jsonplaceholder.typicode.com/posts/1".into(),
+            headers: vec![("Accept".into(), "application/json".into())],
+            body: vec![],
+        })
+        .unwrap();
+        assert_eq!(resp.status, 200);
+        assert!(String::from_utf8_lossy(&resp.body).contains("\"id\": 1"));
+    }
 }

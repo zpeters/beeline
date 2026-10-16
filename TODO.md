@@ -6,9 +6,23 @@ for design docs and past plans).
 
 ## Next up
 
-- _Nothing queued._
+- Click through the whole UI by hand (send, save, rename, move to Trash,
+  environments). It was built overnight and verified only by tests,
+  build and launch.
+
+## Known gaps
+
+- "Save" on a scratch request from the unsaved-changes prompt saves it
+  but drops the action that prompted it (open another request etc.).
+- Environments cannot be renamed in the app; rename the file.
+- Environment variables are saved as a sorted map, so the editor
+  re-sorts rows on save.
+- Secrets in environment files are plain text in the collection folder.
 
 ## Ideas
+
+- Request tabs, copy as cURL, request history (left out of the basic
+  client on purpose).
 
 - **Import from API docs (Paprika-style).** Browse an API documentation
   site inside the app, then parse the page into a collection of
@@ -20,4 +34,7 @@ for design docs and past plans).
 
 ## Recently shipped
 
+- **Basic full client** (2026-10-15) — collections on disk, request
+  editor (params, headers, body types, auth), environments with
+  `{{vars}}`, response viewer.
 - **Scaffold** — initial project setup.

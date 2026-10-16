@@ -1,0 +1,8 @@
+{
+  "method": "POST",
+  "url": "{{base}}/posts",
+  "body": {
+    "type": "json",
+    "text": "{\n  \"title\": \"hello from beeline\",\n  \"body\": \"bzz\",\n  \"userId\": 1\n}"
+  }
+}

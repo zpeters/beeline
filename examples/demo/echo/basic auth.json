@@ -1,0 +1,5 @@
+{
+  "method": "GET",
+  "url": "{{echo}}/basic-auth/bee/line",
+  "auth": { "type": "basic", "username": "bee", "password": "line" }
+}

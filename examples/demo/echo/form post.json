@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "url": "{{echo}}/post",
+  "body": {
+    "type": "form",
+    "fields": [
+      { "key": "name", "value": "bee line", "enabled": true },
+      { "key": "skipped", "value": "1", "enabled": false }
+    ]
+  }
+}

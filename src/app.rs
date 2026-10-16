@@ -254,6 +254,8 @@ impl App {
                 self.saved = req.clone();
                 self.req = req;
                 self.open = Some(path);
+                // Drop any in-flight response; it belongs to the old request.
+                self.pending = None;
                 self.result = None;
             }
             Err(e) => self.notify(e, true),

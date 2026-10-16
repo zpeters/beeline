@@ -1,0 +1,5 @@
+{
+  "method": "GET",
+  "url": "{{echo}}/bearer",
+  "auth": { "type": "bearer", "token": "{{token}}" }
+}

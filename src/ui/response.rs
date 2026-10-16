@@ -15,17 +15,28 @@ pub enum Tab {
 /// rather than every frame.
 pub struct View {
     resp: http::Response,
+    /// The full display text, for Copy.
     text: String,
+    /// What the text view shows; capped so huge bodies stay responsive.
+    shown: String,
+    truncated: bool,
     is_json: bool,
     tab: Tab,
 }
 
+/// Bodies bigger than this are cut in the view (Copy still copies all).
+const MAX_SHOWN: usize = 2 * 1024 * 1024;
+
 impl View {
     pub fn new(resp: http::Response) -> Self {
         let (text, is_json) = format::body_text(&resp.body);
+        let mut shown = text.clone();
+        let truncated = format::truncate(&mut shown, MAX_SHOWN);
         Self {
             resp,
             text,
+            shown,
+            truncated,
             is_json,
             tab: Tab::default(),
         }
@@ -75,11 +86,20 @@ pub fn show(ui: &mut egui::Ui, view: &mut View) {
 
     match view.tab {
         Tab::Body => {
+            if view.truncated {
+                ui.colored_label(
+                    ui.visuals().warn_fg_color,
+                    format!(
+                        "Showing the first {}. Copy body copies all of it.",
+                        format::size(MAX_SHOWN)
+                    ),
+                );
+            }
             egui::ScrollArea::both()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     ui.add(
-                        egui::TextEdit::multiline(&mut view.text.as_str())
+                        egui::TextEdit::multiline(&mut view.shown.as_str())
                             .code_editor()
                             .desired_width(f32::INFINITY),
                     );

@@ -1,0 +1,11 @@
+{
+  "method": "GET",
+  "url": "{{base}}/posts?_limit=5",
+  "params": [
+    { "key": "_limit", "value": "5", "enabled": true },
+    { "key": "userId", "value": "1", "enabled": false }
+  ],
+  "headers": [
+    { "key": "Accept", "value": "application/json", "enabled": true }
+  ]
+}

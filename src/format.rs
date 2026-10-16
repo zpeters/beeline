@@ -13,6 +13,20 @@ pub fn body_text(body: &[u8]) -> (String, bool) {
     (String::from_utf8_lossy(body).into_owned(), false)
 }
 
+/// Cut `text` to at most `max` bytes on a char boundary. Returns whether
+/// it was cut.
+pub fn truncate(text: &mut String, max: usize) -> bool {
+    if text.len() <= max {
+        return false;
+    }
+    let mut end = max;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.truncate(end);
+    true
+}
+
 pub fn size(bytes: usize) -> String {
     const KB: f64 = 1024.0;
     let b = bytes as f64;
@@ -54,6 +68,16 @@ mod tests {
     #[test]
     fn invalid_utf8_is_replaced() {
         assert_eq!(body_text(&[b'a', 0xff]).0, "a\u{fffd}");
+    }
+
+    #[test]
+    fn truncates_on_char_boundary() {
+        let mut s = "aé".to_string(); // 'é' is 2 bytes
+        assert!(truncate(&mut s, 2));
+        assert_eq!(s, "a");
+        let mut short = "abc".to_string();
+        assert!(!truncate(&mut short, 3));
+        assert_eq!(short, "abc");
     }
 
     #[test]
