@@ -2,8 +2,8 @@
 //! wrappers below match iced's own widgets, with corners rounded to
 //! `RADIUS`. Views call these instead of iced's helpers.
 
-use iced::widget::{self as w, container, pick_list, text_editor};
-use iced::{Border, Element, Font, Theme};
+use iced::widget::{self as w, column, container, pick_list, text, text_editor};
+use iced::{Border, Element, Fill, Font, Length, Theme};
 
 use crate::app::App;
 
@@ -44,12 +44,6 @@ pub fn button<'a, M: Clone + 'a>(content: impl Into<Element<'a, M>>) -> w::butto
 
 pub fn primary(theme: &Theme, status: w::button::Status) -> w::button::Style {
     let mut s = w::button::primary(theme, status);
-    round(&mut s.border);
-    s
-}
-
-pub fn secondary(theme: &Theme, status: w::button::Status) -> w::button::Style {
-    let mut s = w::button::secondary(theme, status);
     round(&mut s.border);
     s
 }
@@ -101,4 +95,28 @@ pub fn card(theme: &Theme) -> container::Style {
     let mut s = container::bordered_box(theme);
     round(&mut s.border);
     s
+}
+
+// --- tabs ---
+
+/// A conventional tab: a label, with an accent bar under it when selected.
+/// Tab strips are rows of these, with a rule drawn under the row.
+pub fn tab<'a, T: PartialEq, M: Clone + 'a>(
+    current: T,
+    this: T,
+    label: String,
+    on_press: M,
+) -> Element<'a, M> {
+    let selected = current == this;
+    let label = button(text(label).size(TEXT))
+        .style(text_button)
+        .on_press(on_press);
+    let bar = container(w::space::horizontal())
+        .height(3)
+        .width(Fill)
+        .style(move |theme: &Theme| container::Style {
+            background: selected.then(|| theme.extended_palette().primary.base.color.into()),
+            ..container::Style::default()
+        });
+    column![label, bar].width(Length::Shrink).into()
 }

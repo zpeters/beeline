@@ -5,10 +5,10 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use iced::widget::{column, pick_list, row, scrollable, space, text};
+use iced::widget::{column, mouse_area, pick_list, row, scrollable, text};
 use iced::{Element, Fill, Padding};
 
-use crate::collection::Node;
+use crate::collection::{self, Node};
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
@@ -17,7 +17,9 @@ pub enum Action {
     Reload,
     ToggleFolder(PathBuf),
     /// Shows or hides the row of actions under a folder or request.
-    ToggleMenu(PathBuf),
+    /// Right-click on a row: the app opens its context menu at the cursor.
+    ContextMenu(PathBuf),
+    Clone(PathBuf),
     Open(PathBuf),
     NewRequest(PathBuf),
     NewFolder(PathBuf),
@@ -37,8 +39,6 @@ pub struct Props<'a> {
     pub env: Option<&'a str>,
     /// Folders that are open. Folders start closed, as they did in egui.
     pub expanded: &'a BTreeSet<PathBuf>,
-    /// The row whose action menu is open, if any.
-    pub menu: Option<&'a Path>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,12 +62,7 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
         .and_then(|r| r.file_name())
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "beeline".into());
-    let header = row![
-        text(title).size(theme::HEADING),
-        space::horizontal().width(Fill),
-        theme::button(text("Open…").size(theme::TEXT)).on_press(Action::OpenCollection),
-    ]
-    .spacing(8);
+    let header = row![text(title).size(theme::HEADING)];
     let mut col = column![header].spacing(10);
 
     let Some(root) = p.root else {
@@ -139,29 +134,13 @@ fn tree_rows<'a>(nodes: &'a [Node], depth: u16, p: &Props<'a>, out: &mut Vec<Ele
             } => {
                 let open = p.expanded.contains(path);
                 let arrow = if open { "▾" } else { "▸" };
-                out.push(indented(
-                    depth,
-                    row![
-                        theme::button(text(format!("{arrow} {name}")).size(theme::TEXT))
-                            .style(theme::text_button)
-                            .on_press(Action::ToggleFolder(path.clone()))
-                            .width(Fill),
-                        menu_toggle(path),
-                    ]
-                    .spacing(4)
-                    .into(),
-                ));
-                if p.menu == Some(path.as_path()) {
-                    out.push(indented(
-                        depth + 1,
-                        action_row(&[
-                            ("New request", Action::NewRequest(path.clone())),
-                            ("New folder", Action::NewFolder(path.clone())),
-                            ("Rename…", Action::Rename(path.clone())),
-                            ("Move to Trash…", Action::Delete(path.clone())),
-                        ]),
-                    ));
-                }
+                let count = collection::request_count(children);
+                let label = format!("{arrow} {name} ({count})");
+                let button = theme::button(text(label).size(theme::TEXT))
+                    .style(theme::text_button)
+                    .on_press(Action::ToggleFolder(path.clone()))
+                    .width(Fill);
+                out.push(indented(depth, row_area(button, path)));
                 if open {
                     if children.is_empty() {
                         out.push(indented(depth + 1, text("Empty").size(theme::SMALL).into()));
@@ -179,49 +158,29 @@ fn tree_rows<'a>(nodes: &'a [Node], depth: u16, p: &Props<'a>, out: &mut Vec<Ele
                 } else {
                     theme::text_button
                 };
-                out.push(indented(
-                    depth,
-                    row![
-                        theme::button(text(name.as_str()).size(theme::TEXT))
-                            .style(style)
-                            .on_press(Action::Open(path.clone()))
-                            .width(Fill),
-                        menu_toggle(path),
-                    ]
-                    .spacing(4)
-                    .into(),
-                ));
-                if p.menu == Some(path.as_path()) {
-                    out.push(indented(
-                        depth + 1,
-                        action_row(&[
-                            ("Rename…", Action::Rename(path.clone())),
-                            ("Move to Trash…", Action::Delete(path.clone())),
-                        ]),
-                    ));
-                }
+                let button = theme::button(text(name.as_str()).size(theme::TEXT))
+                    .style(style)
+                    .on_press(Action::Open(path.clone()))
+                    .width(Fill);
+                out.push(indented(depth, row_area(button, path)));
             }
         }
     }
 }
 
-fn menu_toggle<'a>(path: &Path) -> Element<'a, Action> {
-    theme::button(text("⋯").size(theme::TEXT))
+/// A row's button, a visible "⋯" that opens the context menu, and a
+/// right-click on the row that does the same.
+fn row_area<'a>(button: iced::widget::Button<'a, Action>, path: &Path) -> Element<'a, Action> {
+    let more = theme::button(text("⋯").size(theme::TEXT))
         .style(theme::text_button)
-        .on_press(Action::ToggleMenu(path.to_path_buf()))
-        .into()
-}
-
-fn action_row<'a>(items: &[(&'static str, Action)]) -> Element<'a, Action> {
-    let mut r = row![].spacing(6);
-    for (label, action) in items {
-        r = r.push(
-            theme::button(text(*label).size(theme::SMALL))
-                .style(theme::secondary)
-                .on_press(action.clone()),
-        );
-    }
-    r.into()
+        .on_press(Action::ContextMenu(path.to_path_buf()));
+    mouse_area(
+        row![button, more]
+            .spacing(4)
+            .align_y(iced::Alignment::Center),
+    )
+    .on_right_press(Action::ContextMenu(path.to_path_buf()))
+    .into()
 }
 
 /// Pushes `content` right by one indent step per `depth`.

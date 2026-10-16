@@ -7,9 +7,10 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use iced::keyboard;
+use iced::mouse;
 use iced::widget::pane_grid::{self, Axis, Configuration, Content, PaneGrid};
-use iced::widget::{column, container, row, rule, space, stack, text, text_editor};
-use iced::{Element, Fill, FillPortion, Subscription, Task, event, window};
+use iced::widget::{column, container, mouse_area, row, rule, space, stack, text, text_editor};
+use iced::{Element, Fill, FillPortion, Point, Subscription, Task, event, window};
 use serde::{Deserialize, Serialize};
 
 use crate::collection::{self, Node};
@@ -137,8 +138,10 @@ pub struct App {
     env_editor: Option<EnvEditor>,
     /// Folders that are open in the sidebar.
     expanded: BTreeSet<PathBuf>,
-    /// The sidebar row whose action menu is open.
-    row_menu: Option<PathBuf>,
+    /// The open context menu: the row it is for, and where to draw it.
+    context: Option<(PathBuf, Point)>,
+    /// Last known pointer position, so a menu can open where it was clicked.
+    cursor: Point,
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +154,8 @@ pub enum Message {
     Save,
     Sent(u64, Result<http::Response, String>),
     CloseRequested(window::Id),
+    CursorMoved(Point),
+    CloseContext,
     PaneResized(pane_grid::ResizeEvent),
 }
 
@@ -181,7 +186,8 @@ impl App {
             vars: BTreeMap::new(),
             env_editor: None,
             expanded: BTreeSet::new(),
-            row_menu: None,
+            context: None,
+            cursor: Point::ORIGIN,
         };
         let saved = load_state();
         match start {
@@ -264,7 +270,7 @@ impl App {
                 self.saved = RequestFile::default();
                 self.result = None;
                 self.expanded.clear();
-                self.row_menu = None;
+                self.context = None;
                 self.save_state();
             }
             Err(e) => self.notify(e, true),
@@ -464,9 +470,7 @@ impl App {
 
     fn sidebar_action(&mut self, action: sidebar::Action) -> Task<Message> {
         use sidebar::Action;
-        if !matches!(action, Action::ToggleMenu(_)) {
-            self.row_menu = None;
-        }
+        self.context = None;
         match action {
             Action::OpenCollection => {
                 if let Some(root) = rfd::FileDialog::new()
@@ -482,13 +486,14 @@ impl App {
                     self.expanded.insert(path);
                 }
             }
-            Action::ToggleMenu(path) => {
-                self.row_menu = if self.row_menu.as_ref() == Some(&path) {
-                    None
-                } else {
-                    Some(path)
-                };
-            }
+            Action::ContextMenu(path) => self.context = Some((path, self.cursor)),
+            Action::Clone(path) => match collection::duplicate(&path) {
+                Ok(copy) => {
+                    self.reload_tree();
+                    self.notify(format!("Cloned as \"{}\"", collection::stem(&copy)), false);
+                }
+                Err(e) => self.notify(e, true),
+            },
             Action::Open(path) => {
                 if self.open.as_ref() != Some(&path) {
                     return self.guard(Then::Open(path));
@@ -589,6 +594,14 @@ impl App {
                 }
                 Task::none()
             }
+            Message::CursorMoved(at) => {
+                self.cursor = at;
+                Task::none()
+            }
+            Message::CloseContext => {
+                self.context = None;
+                Task::none()
+            }
             Message::Sent(generation, res) => {
                 if generation == self.generation {
                     self.pending = false;
@@ -680,7 +693,7 @@ impl App {
                 self.run(then)
             }
             dialog::Msg::Cancel => {
-                if self.modal.take().is_none() {
+                if self.context.take().is_none() && self.modal.take().is_none() {
                     self.env_editor = None;
                 }
                 Task::none()
@@ -810,6 +823,9 @@ impl App {
             let env_dirty = editor.rows != editor.saved;
             layers.push(dialog::env(&editor.name, &editor.rows, env_dirty).map(Message::Dialog));
         }
+        if let Some((path, at)) = &self.context {
+            layers.push(self.context_menu(path, *at));
+        }
         if let Some(modal) = &self.modal {
             layers.push(self.modal_view(modal));
         }
@@ -826,7 +842,6 @@ impl App {
             envs: c.map(|c| c.envs.as_slice()).unwrap_or_default(),
             env: self.env.as_deref(),
             expanded: &self.expanded,
-            menu: self.row_menu.as_deref(),
         })
         .map(Message::Sidebar);
         container(side)
@@ -848,6 +863,8 @@ impl App {
                 text("")
             },
             space::horizontal().width(Fill),
+            theme::button(text("Open…").size(theme::TEXT))
+                .on_press(Message::Sidebar(sidebar::Action::OpenCollection)),
             theme::button(text("Save").size(theme::TEXT))
                 .on_press_maybe(dirty.then_some(Message::Save)),
         ]
@@ -887,6 +904,57 @@ impl App {
         .into()
     }
 
+    /// A context menu at `at`. A click anywhere outside it closes it.
+    fn context_menu(&self, path: &Path, at: Point) -> Element<'_, Message> {
+        let item = |label: &'static str, action: sidebar::Action| -> Element<'_, Message> {
+            theme::button(text(label).size(theme::TEXT))
+                .style(theme::text_button)
+                .width(Fill)
+                .on_press(Message::Sidebar(action))
+                .into()
+        };
+        let items: Vec<Element<'_, Message>> = if path.is_dir() {
+            vec![
+                item(
+                    "New request",
+                    sidebar::Action::NewRequest(path.to_path_buf()),
+                ),
+                item("New folder", sidebar::Action::NewFolder(path.to_path_buf())),
+                item("Rename…", sidebar::Action::Rename(path.to_path_buf())),
+                item(
+                    "Move to Trash…",
+                    sidebar::Action::Delete(path.to_path_buf()),
+                ),
+            ]
+        } else {
+            vec![
+                item("Clone", sidebar::Action::Clone(path.to_path_buf())),
+                item("Rename…", sidebar::Action::Rename(path.to_path_buf())),
+                item(
+                    "Move to Trash…",
+                    sidebar::Action::Delete(path.to_path_buf()),
+                ),
+            ]
+        };
+        let card = container(column(items).spacing(2))
+            .style(theme::card)
+            .padding(6)
+            .width(200);
+        let placed = container(card)
+            .padding(iced::Padding {
+                top: at.y,
+                right: 0.0,
+                bottom: 0.0,
+                left: at.x,
+            })
+            .width(Fill)
+            .height(Fill);
+        mouse_area(placed)
+            .on_press(Message::CloseContext)
+            .on_right_press(Message::CloseContext)
+            .into()
+    }
+
     fn modal_view<'a>(&'a self, modal: &'a Modal) -> Element<'a, Message> {
         match modal {
             Modal::Unsaved(_) => {
@@ -921,18 +989,24 @@ impl App {
     }
 }
 
-/// The window-level keys: Cmd+S saves, Cmd+Enter sends, Escape closes a dialog.
+/// Window-level input: the pointer position (for context menus), Cmd+S
+/// saves, Cmd+Enter sends, and Escape closes a menu or dialog.
 fn shortcut(event: iced::Event, _status: event::Status, _id: window::Id) -> Option<Message> {
-    let iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event else {
-        return None;
-    };
-    match key.as_ref() {
-        keyboard::Key::Named(keyboard::key::Named::Escape) => {
-            Some(Message::Dialog(dialog::Msg::Cancel))
+    match event {
+        iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
+            Some(Message::CursorMoved(position))
         }
-        keyboard::Key::Character("s") if modifiers.command() => Some(Message::Save),
-        keyboard::Key::Named(keyboard::key::Named::Enter) if modifiers.command() => {
-            Some(Message::Send)
+        iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+            match key.as_ref() {
+                keyboard::Key::Named(keyboard::key::Named::Escape) => {
+                    Some(Message::Dialog(dialog::Msg::Cancel))
+                }
+                keyboard::Key::Character("s") if modifiers.command() => Some(Message::Save),
+                keyboard::Key::Named(keyboard::key::Named::Enter) if modifiers.command() => {
+                    Some(Message::Send)
+                }
+                _ => None,
+            }
         }
         _ => None,
     }

@@ -1,6 +1,6 @@
 //! The response viewer: status line, Body and Headers tabs.
 
-use iced::widget::{column, row, scrollable, space, text, text_editor};
+use iced::widget::{column, row, rule, scrollable, space, text, text_editor};
 use iced::{Color, Element, Fill};
 
 use crate::format;
@@ -104,7 +104,7 @@ pub fn view(view: &View) -> Element<'_, Msg> {
             format!("Headers ({})", resp.headers.len())
         ),
     ]
-    .spacing(6);
+    .spacing(16);
 
     let body: Element<'_, Msg> = match view.tab {
         Tab::Body => {
@@ -143,18 +143,12 @@ pub fn view(view: &View) -> Element<'_, Msg> {
         }
     };
 
-    column![info, tabs, body].spacing(8).height(Fill).into()
+    column![info, column![tabs, rule::horizontal(1)], body]
+        .spacing(8)
+        .height(Fill)
+        .into()
 }
 
 fn tab_button<'a>(current: Tab, this: Tab, label: String) -> Element<'a, Msg> {
-    let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
-        if current == this {
-            theme::primary
-        } else {
-            theme::secondary
-        };
-    theme::button(text(label).size(theme::TEXT))
-        .style(style)
-        .on_press(Msg::Tab(this))
-        .into()
+    theme::tab(current, this, label, Msg::Tab(this))
 }

@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use iced::widget::{column, pick_list, radio, row, scrollable, text, text_editor};
+use iced::widget::{column, pick_list, radio, row, rule, scrollable, text, text_editor};
 use iced::{Element, Fill};
 
 use crate::model::{Auth, AuthKind, BodyKind, METHODS, RequestFile};
@@ -153,8 +153,8 @@ pub fn view<'a>(
         tab_button(tab, Tab::Body, body_label(req)),
         tab_button(tab, Tab::Auth, auth_label(req)),
     ]
-    .spacing(6);
-    col = col.push(tabs);
+    .spacing(16);
+    col = col.push(tabs).push(rule::horizontal(1));
 
     let content: Element<'a, Msg> = match tab {
         Tab::Params => scrollable(kv::view(&req.params, true).map(|m| Msg::Kv(Table::Params, m)))
@@ -172,16 +172,7 @@ pub fn view<'a>(
 }
 
 fn tab_button<'a>(current: Tab, this: Tab, label: String) -> Element<'a, Msg> {
-    let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
-        if current == this {
-            theme::primary
-        } else {
-            theme::secondary
-        };
-    theme::button(text(label).size(theme::TEXT))
-        .style(style)
-        .on_press(Msg::Tab(this))
-        .into()
+    theme::tab(current, this, label, Msg::Tab(this))
 }
 
 fn body_label(req: &RequestFile) -> String {

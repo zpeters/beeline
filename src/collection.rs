@@ -196,6 +196,59 @@ pub fn delete(path: &Path) -> Result<(), String> {
     trash::delete(path).map_err(|e| err("move to trash", path, e))
 }
 
+/// Copy a request beside itself as "<name> copy", "<name> copy 2", ...
+pub fn duplicate(path: &Path) -> Result<PathBuf, String> {
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let req = read_request(path)?;
+    let base = stem(path);
+    for n in 1.. {
+        let name = if n == 1 {
+            format!("{base} copy")
+        } else {
+            format!("{base} copy {n}")
+        };
+        let target = dir.join(format!("{name}.{EXT}"));
+        if !target.exists() {
+            write_request(&target, &req)?;
+            return Ok(target);
+        }
+    }
+    unreachable!("an unbounded range always finds a free name")
+}
+
+// Used by drag-and-drop, which is the next step.
+#[allow(dead_code)]
+/// Move a request or folder into the folder `dir`. Fails when the name is
+/// taken there, or when a folder would go inside itself.
+pub fn move_into(path: &Path, dir: &Path) -> Result<PathBuf, String> {
+    if path.is_dir() && dir.starts_with(path) {
+        return Err("A folder cannot move into itself".into());
+    }
+    let Some(name) = path.file_name() else {
+        return Err(format!("Cannot move {}", path.display()));
+    };
+    let target = dir.join(name);
+    if target == path {
+        return Ok(target);
+    }
+    if target.exists() {
+        return Err(format!("\"{}\" already exists there", stem(&target)));
+    }
+    fs::rename(path, &target).map_err(|e| err("move", path, e))?;
+    Ok(target)
+}
+
+/// How many requests are in `nodes`, counting nested ones.
+pub fn request_count(nodes: &[Node]) -> usize {
+    nodes
+        .iter()
+        .map(|node| match node {
+            Node::Request { .. } => 1,
+            Node::Folder { children, .. } => request_count(children),
+        })
+        .sum()
+}
+
 /// Where `path` lives after `from` was renamed to `to`, if it was inside
 /// (or is) `from`.
 pub fn moved(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
@@ -211,6 +264,47 @@ pub fn moved(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn duplicate_writes_a_copy_with_a_free_name() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("a.json"), r#"{"url": "https://x"}"#);
+        let first = duplicate(&dir.path().join("a.json")).unwrap();
+        assert_eq!(stem(&first), "a copy");
+        assert_eq!(read_request(&first).unwrap().url, "https://x");
+        let second = duplicate(&dir.path().join("a.json")).unwrap();
+        assert_eq!(stem(&second), "a copy 2");
+    }
+
+    #[test]
+    fn move_into_moves_a_request_and_refuses_a_clash() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("a.json"), "{}");
+        touch(&dir.path().join("folder/b.json"), "{}");
+        touch(&dir.path().join("folder/a.json"), "{}");
+        assert!(move_into(&dir.path().join("a.json"), &dir.path().join("folder")).is_err());
+        touch(&dir.path().join("c.json"), "{}");
+        let moved = move_into(&dir.path().join("c.json"), &dir.path().join("folder")).unwrap();
+        assert_eq!(moved, dir.path().join("folder/c.json"));
+        assert!(!dir.path().join("c.json").exists());
+    }
+
+    #[test]
+    fn folder_cannot_move_into_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("f/inner")).unwrap();
+        assert!(move_into(&dir.path().join("f"), &dir.path().join("f/inner")).is_err());
+    }
+
+    #[test]
+    fn request_count_includes_nested_requests() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("top.json"), "{}");
+        touch(&dir.path().join("sub/a.json"), "{}");
+        touch(&dir.path().join("sub/deep/b.json"), "{}");
+        let tree = scan(dir.path()).unwrap();
+        assert_eq!(request_count(&tree), 3);
+    }
 
     fn touch(path: &Path, contents: &str) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
