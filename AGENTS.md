@@ -108,5 +108,6 @@ work is done and green.
   server order when pretty-printing.
 - The URL holds the query string; `params` mirrors it. Disabled params
   exist only in `params`.
-- Do not take screenshots with `screencapture` on this Mac; it raises a
-  screen-recording permission prompt for the terminal.
+- Screenshots with `screencapture` are allowed on this Mac to verify UI
+  changes. The first run may raise a screen-recording permission prompt
+  for the terminal; that is expected.

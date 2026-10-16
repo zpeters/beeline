@@ -114,6 +114,7 @@ pub struct App {
 impl App {
     /// Opens `start` if given, otherwise the last collection used.
     pub fn new(cc: &eframe::CreationContext<'_>, start: Option<PathBuf>) -> Self {
+        ui::theme::apply(&cc.egui_ctx);
         let mut app = Self {
             collection: None,
             req: RequestFile::default(),
@@ -720,9 +721,10 @@ impl eframe::App for App {
         });
 
         let mut actions = Vec::new();
-        egui::Panel::left("sidebar")
+        let side = egui::Panel::left("sidebar")
             .resizable(true)
             .default_size(240.0)
+            .size_range(200.0..=360.0)
             .show(root, |ui| {
                 let c = self.collection.as_ref();
                 actions = sidebar::show(
@@ -736,6 +738,15 @@ impl eframe::App for App {
                     },
                 );
             });
+        // DEBUG: remove after the scroll-drift bug is found.
+        let scroll = ctx.input(|i| i.smooth_scroll_delta);
+        if scroll != egui::Vec2::ZERO {
+            eprintln!(
+                "DEBUG scroll={scroll:?} sidebar_left={:.1} sidebar_right={:.1}",
+                side.response.rect.left(),
+                side.response.rect.right()
+            );
+        }
 
         let title = self.title();
         let dirty = self.dirty();
