@@ -102,9 +102,14 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
 
     let env_name = p.env.unwrap_or("No environment");
     col = col.push(
-        theme::button(text(format!("{env_name} ▾")).size(theme::text_px()))
-            .style(theme::text_button)
-            .on_press(Action::ToggleEnvMenu),
+        row![
+            theme::button(text(format!("{env_name} ▾")).size(theme::text_px()))
+                .style(theme::text_button)
+                .on_press(Action::ToggleEnvMenu),
+            theme::button("Edit environment").on_press_maybe(p.env.map(|_| Action::EditEnv)),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center),
     );
 
     col = col.push(
