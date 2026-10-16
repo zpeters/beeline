@@ -20,7 +20,7 @@ use crate::settings::{self, Settings};
 use crate::tabs::Tabs;
 use crate::ui::tab_strip;
 use crate::ui::{dialog, editor, kv, response, sidebar, theme};
-use crate::{http, resolve, seed};
+use crate::{http, resolve, samples, seed};
 
 const NOTICE_TIME: Duration = Duration::from_secs(4);
 /// The two resizable panes: the collection sidebar and the request/response area.
@@ -754,6 +754,17 @@ impl App {
             }
             Action::EditEnv => self.edit_env(),
             Action::Settings => self.open_settings(),
+            Action::AddSamples(dir) => match samples::write(&dir) {
+                Ok(folder) => {
+                    self.expanded.insert(dir);
+                    self.reload_tree();
+                    self.notify(
+                        format!("Added samples to \"{}\"", collection::stem(&folder)),
+                        false,
+                    );
+                }
+                Err(e) => self.notify(e, true),
+            },
         }
         Task::none()
     }
@@ -1416,6 +1427,10 @@ impl App {
                     sidebar::Action::NewRequest(path.to_path_buf()),
                 ),
                 item("New folder", sidebar::Action::NewFolder(path.to_path_buf())),
+                item(
+                    "Add sample requests",
+                    sidebar::Action::AddSamples(path.to_path_buf()),
+                ),
                 item("Rename…", sidebar::Action::Rename(path.to_path_buf())),
                 item(
                     "Move to Trash…",

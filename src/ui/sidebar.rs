@@ -34,6 +34,8 @@ pub enum Action {
     EditEnv,
     /// The gear at the bottom of the sidebar: opens the settings dialog.
     Settings,
+    /// Adds the httpbin sample folder inside a folder.
+    AddSamples(PathBuf),
 }
 
 /// The settings gear, at the bottom-left of the sidebar.
