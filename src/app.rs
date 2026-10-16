@@ -142,6 +142,12 @@ pub struct App {
     context: Option<(PathBuf, Point)>,
     /// Last known pointer position, so a menu can open where it was clicked.
     cursor: Point,
+    /// The item being dragged, from the press that started it.
+    drag: Option<PathBuf>,
+    /// The row the pointer is over, which is the drop target during a drag.
+    drop_target: Option<PathBuf>,
+    /// Where the pointer was when the drag's press happened.
+    press_at: Point,
 }
 
 #[derive(Debug, Clone)]
@@ -155,6 +161,7 @@ pub enum Message {
     Sent(u64, Result<http::Response, String>),
     CloseRequested(window::Id),
     CursorMoved(Point),
+    MouseReleased,
     CloseContext,
     PaneResized(pane_grid::ResizeEvent),
 }
@@ -188,6 +195,9 @@ impl App {
             expanded: BTreeSet::new(),
             context: None,
             cursor: Point::ORIGIN,
+            drag: None,
+            drop_target: None,
+            press_at: Point::ORIGIN,
         };
         let saved = load_state();
         match start {
@@ -470,7 +480,9 @@ impl App {
 
     fn sidebar_action(&mut self, action: sidebar::Action) -> Task<Message> {
         use sidebar::Action;
-        self.context = None;
+        if !matches!(action, Action::Enter(_) | Action::Exit(_)) {
+            self.context = None;
+        }
         match action {
             Action::OpenCollection => {
                 if let Some(root) = rfd::FileDialog::new()
@@ -487,6 +499,19 @@ impl App {
                 }
             }
             Action::ContextMenu(path) => self.context = Some((path, self.cursor)),
+            Action::Press(path) => {
+                self.drop_target = Some(path.clone());
+                self.drag = Some(path);
+                self.press_at = self.cursor;
+            }
+            Action::Enter(path) => {
+                self.drop_target = Some(path);
+            }
+            Action::Exit(path) => {
+                if self.drop_target.as_ref() == Some(&path) {
+                    self.drop_target = None;
+                }
+            }
             Action::Clone(path) => match collection::duplicate(&path) {
                 Ok(copy) => {
                     self.reload_tree();
@@ -521,6 +546,53 @@ impl App {
             Action::EditEnv => self.edit_env(),
         }
         Task::none()
+    }
+
+    /// A release ends a drag. Released on the item it started on, it is a
+    /// click. Released on a folder, it moves the item there.
+    fn finish_drag(&mut self) -> Task<Message> {
+        let Some(origin) = self.drag.take() else {
+            return Task::none();
+        };
+        let Some(target) = self.drop_target.take() else {
+            return Task::none();
+        };
+        if target == origin {
+            let action = if origin.is_dir() {
+                sidebar::Action::ToggleFolder(origin)
+            } else {
+                sidebar::Action::Open(origin)
+            };
+            return self.sidebar_action(action);
+        }
+        // Dropping on a request means dropping into the folder it sits in.
+        let dir = if target.is_dir() {
+            Some(target)
+        } else {
+            target.parent().map(Path::to_path_buf)
+        };
+        if let Some(dir) = dir
+            && origin.parent() != Some(dir.as_path())
+        {
+            self.move_item(&origin, &dir);
+        }
+        Task::none()
+    }
+
+    fn move_item(&mut self, from: &Path, dir: &Path) {
+        match collection::move_into(from, dir) {
+            Ok(to) => {
+                if let Some(open) = &self.open
+                    && let Some(moved) = collection::moved(open, from, &to)
+                {
+                    self.open = Some(moved);
+                }
+                self.expanded.insert(dir.to_path_buf());
+                self.reload_tree();
+                self.notify(format!("Moved to \"{}\"", collection::stem(dir)), false);
+            }
+            Err(e) => self.notify(e, true),
+        }
     }
 
     fn env_save(&mut self) {
@@ -598,6 +670,7 @@ impl App {
                 self.cursor = at;
                 Task::none()
             }
+            Message::MouseReleased => self.finish_drag(),
             Message::CloseContext => {
                 self.context = None;
                 Task::none()
@@ -640,6 +713,10 @@ impl App {
                 }
                 Task::none()
             }
+            editor::Msg::Cancel => {
+                self.cancel_request();
+                Task::none()
+            }
             other => {
                 if editor::update(&mut self.req, &mut self.tab, other) {
                     self.send()
@@ -647,6 +724,16 @@ impl App {
                     Task::none()
                 }
             }
+        }
+    }
+
+    /// Gives up on the request in flight. Its response, if it arrives, is
+    /// dropped because the generation has moved on.
+    fn cancel_request(&mut self) {
+        if self.pending {
+            self.generation += 1;
+            self.pending = false;
+            self.result = Some(Err("Request cancelled".into()));
         }
     }
 
@@ -823,6 +910,9 @@ impl App {
             let env_dirty = editor.rows != editor.saved;
             layers.push(dialog::env(&editor.name, &editor.rows, env_dirty).map(Message::Dialog));
         }
+        if let Some((name, at)) = self.drag_ghost() {
+            layers.push(drag_ghost_layer(name, at));
+        }
         if let Some((path, at)) = &self.context {
             layers.push(self.context_menu(path, *at));
         }
@@ -842,6 +932,8 @@ impl App {
             envs: c.map(|c| c.envs.as_slice()).unwrap_or_default(),
             env: self.env.as_deref(),
             expanded: &self.expanded,
+            drop: self.drop_folder(),
+            dragging: self.drag.as_deref(),
         })
         .map(Message::Sidebar);
         container(side)
@@ -902,6 +994,30 @@ impl App {
         .spacing(8)
         .height(Fill)
         .into()
+    }
+
+    /// The folder a drop would move the dragged item into, for highlighting.
+    fn drop_folder(&self) -> Option<&Path> {
+        let origin = self.drag.as_deref()?;
+        let target = self.drop_target.as_deref()?;
+        if target == origin {
+            return None;
+        }
+        let dir = if target.is_dir() {
+            target
+        } else {
+            target.parent()?
+        };
+        (origin.parent() != Some(dir)).then_some(dir)
+    }
+
+    /// The dragged item's name and the pointer, once the pointer has moved
+    /// far enough from the press to count as a drag rather than a click.
+    fn drag_ghost(&self) -> Option<(String, Point)> {
+        let origin = self.drag.as_ref()?;
+        let dx = self.cursor.x - self.press_at.x;
+        let dy = self.cursor.y - self.press_at.y;
+        (dx.hypot(dy) > 6.0).then(|| (display_name(origin), self.cursor))
     }
 
     /// A context menu at `at`. A click anywhere outside it closes it.
@@ -996,6 +1112,9 @@ fn shortcut(event: iced::Event, _status: event::Status, _id: window::Id) -> Opti
         iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
             Some(Message::CursorMoved(position))
         }
+        iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+            Some(Message::MouseReleased)
+        }
         iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
             match key.as_ref() {
                 keyboard::Key::Named(keyboard::key::Named::Escape) => {
@@ -1010,6 +1129,24 @@ fn shortcut(event: iced::Event, _status: event::Status, _id: window::Id) -> Opti
         }
         _ => None,
     }
+}
+
+/// A small card with the dragged item's name, drawn just below and to the
+/// right of the pointer. It takes no input, so it never blocks the rows.
+fn drag_ghost_layer(name: String, at: Point) -> Element<'static, Message> {
+    let card = container(text(name).size(theme::TEXT))
+        .padding([4, 10])
+        .style(theme::card);
+    container(card)
+        .padding(iced::Padding {
+            top: at.y + 12.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: at.x + 12.0,
+        })
+        .width(Fill)
+        .height(Fill)
+        .into()
 }
 
 fn display_name(path: &Path) -> String {

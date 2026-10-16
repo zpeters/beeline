@@ -216,8 +216,6 @@ pub fn duplicate(path: &Path) -> Result<PathBuf, String> {
     unreachable!("an unbounded range always finds a free name")
 }
 
-// Used by drag-and-drop, which is the next step.
-#[allow(dead_code)]
 /// Move a request or folder into the folder `dir`. Fails when the name is
 /// taken there, or when a folder would go inside itself.
 pub fn move_into(path: &Path, dir: &Path) -> Result<PathBuf, String> {

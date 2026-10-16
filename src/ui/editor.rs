@@ -33,6 +33,8 @@ pub enum Msg {
     Method(&'static str),
     Url(String),
     Send,
+    /// Cancels the request in flight. `App` handles it.
+    Cancel,
     Tab(Tab),
     Kv(Table, kv::Msg),
     BodyKind(BodyKind),
@@ -102,7 +104,7 @@ pub fn update(req: &mut RequestFile, tab: &mut Tab, msg: Msg) -> bool {
         Msg::Kv(Table::Headers, m) => kv::update(&mut req.headers, m),
         Msg::Kv(Table::Form, m) => kv::update(&mut req.body.fields, m),
         Msg::BodyKind(k) => req.body.kind = k,
-        Msg::Body(_) | Msg::FormatJson => {}
+        Msg::Body(_) | Msg::FormatJson | Msg::Cancel => {}
         Msg::AuthKind(k) => req.auth.kind = k,
         Msg::Token(s) => req.auth.token = s,
         Msg::Username(s) => req.auth.username = s,
@@ -121,8 +123,12 @@ pub fn view<'a>(
     body: &'a text_editor::Content,
 ) -> Element<'a, Msg> {
     let method = METHODS.iter().copied().find(|m| *m == req.method);
-    let send = theme::button(text(if busy { "…" } else { "Send" }).size(theme::TEXT))
-        .on_press_maybe((!busy).then_some(Msg::Send));
+    // While a request is in flight, the same button cancels it.
+    let send = if busy {
+        theme::button(text("Cancel").size(theme::TEXT)).on_press(Msg::Cancel)
+    } else {
+        theme::button(text("Send").size(theme::TEXT)).on_press(Msg::Send)
+    };
     let url = theme::text_input("https://example.com or {{base}}/path", &req.url)
         .font(theme::MONO)
         .on_input(Msg::Url)

@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use iced::widget::{column, mouse_area, pick_list, row, scrollable, text};
+use iced::widget::{column, container, mouse_area, pick_list, row, scrollable, text};
 use iced::{Element, Fill, Padding};
 
 use crate::collection::{self, Node};
@@ -16,10 +16,14 @@ pub enum Action {
     OpenCollection,
     Reload,
     ToggleFolder(PathBuf),
-    /// Shows or hides the row of actions under a folder or request.
-    /// Right-click on a row: the app opens its context menu at the cursor.
+    /// Right-click, or the ⋯ button: the app opens the context menu at the pointer.
     ContextMenu(PathBuf),
     Clone(PathBuf),
+    /// The mouse went down on a row. Starts a drag, or a click.
+    Press(PathBuf),
+    /// The pointer entered a row. During a drag, this is the drop target.
+    Enter(PathBuf),
+    Exit(PathBuf),
     Open(PathBuf),
     NewRequest(PathBuf),
     NewFolder(PathBuf),
@@ -39,6 +43,10 @@ pub struct Props<'a> {
     pub env: Option<&'a str>,
     /// Folders that are open. Folders start closed, as they did in egui.
     pub expanded: &'a BTreeSet<PathBuf>,
+    /// The folder a drop would move the dragged item into, for highlighting.
+    pub drop: Option<&'a Path>,
+    /// The item being dragged. Its row is marked while the drag is on.
+    pub dragging: Option<&'a Path>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -136,11 +144,12 @@ fn tree_rows<'a>(nodes: &'a [Node], depth: u16, p: &Props<'a>, out: &mut Vec<Ele
                 let arrow = if open { "▾" } else { "▸" };
                 let count = collection::request_count(children);
                 let label = format!("{arrow} {name} ({count})");
-                let button = theme::button(text(label).size(theme::TEXT))
-                    .style(theme::text_button)
-                    .on_press(Action::ToggleFolder(path.clone()))
-                    .width(Fill);
-                out.push(indented(depth, row_area(button, path)));
+                let highlight = p.drop == Some(path.as_path());
+                let dragging = p.dragging == Some(path.as_path());
+                out.push(indented(
+                    depth,
+                    row_area(label, path, highlight, false, dragging),
+                ));
                 if open {
                     if children.is_empty() {
                         out.push(indented(depth + 1, text("Empty").size(theme::SMALL).into()));
@@ -150,37 +159,64 @@ fn tree_rows<'a>(nodes: &'a [Node], depth: u16, p: &Props<'a>, out: &mut Vec<Ele
             }
             Node::Request { name, path } => {
                 let selected = p.selected == Some(path.as_path());
-                let style: fn(
-                    &iced::Theme,
-                    iced::widget::button::Status,
-                ) -> iced::widget::button::Style = if selected {
-                    theme::primary
-                } else {
-                    theme::text_button
-                };
-                let button = theme::button(text(name.as_str()).size(theme::TEXT))
-                    .style(style)
-                    .on_press(Action::Open(path.clone()))
-                    .width(Fill);
-                out.push(indented(depth, row_area(button, path)));
+                let dragging = p.dragging == Some(path.as_path());
+                out.push(indented(
+                    depth,
+                    row_area(name.clone(), path, false, selected, dragging),
+                ));
             }
         }
     }
 }
 
-/// A row's button, a visible "⋯" that opens the context menu, and a
-/// right-click on the row that does the same.
-fn row_area<'a>(button: iced::widget::Button<'a, Action>, path: &Path) -> Element<'a, Action> {
+/// One tree row. Press starts a drag; releasing it on the same row is a
+/// click, and releasing it on a folder moves the item there (`App` decides
+/// which). Right-click and the ⋯ button open the context menu.
+fn row_area<'a>(
+    label: String,
+    path: &Path,
+    highlight: bool,
+    selected: bool,
+    dragging: bool,
+) -> Element<'a, Action> {
+    let line = container(text(label).size(theme::TEXT))
+        .padding([4, 8])
+        .width(Fill)
+        .style(move |t| row_style(t, highlight, selected, dragging));
     let more = theme::button(text("⋯").size(theme::TEXT))
         .style(theme::text_button)
         .on_press(Action::ContextMenu(path.to_path_buf()));
-    mouse_area(
-        row![button, more]
-            .spacing(4)
-            .align_y(iced::Alignment::Center),
-    )
-    .on_right_press(Action::ContextMenu(path.to_path_buf()))
-    .into()
+    let content = row![line, more].spacing(4).align_y(iced::Alignment::Center);
+    mouse_area(content)
+        .on_press(Action::Press(path.to_path_buf()))
+        .on_enter(Action::Enter(path.to_path_buf()))
+        .on_exit(Action::Exit(path.to_path_buf()))
+        .on_right_press(Action::ContextMenu(path.to_path_buf()))
+        .into()
+}
+
+fn row_style(
+    theme: &iced::Theme,
+    highlight: bool,
+    selected: bool,
+    dragging: bool,
+) -> container::Style {
+    let palette = theme.extended_palette();
+    let background = if highlight {
+        Some(palette.primary.base.color.into())
+    } else if dragging {
+        Some(palette.background.strong.color.into())
+    } else if selected {
+        Some(palette.primary.weak.color.into())
+    } else {
+        None
+    };
+    let mut style = container::Style {
+        background,
+        ..container::Style::default()
+    };
+    style.border.radius = theme::RADIUS.into();
+    style
 }
 
 /// Pushes `content` right by one indent step per `depth`.
