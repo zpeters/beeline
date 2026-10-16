@@ -871,6 +871,14 @@ impl App {
                     None => Some(self.cursor),
                 };
             }
+            Action::Trigger(path) => {
+                // The first click of the double-click already opened the tab;
+                // send only if it is the active one, so a failed open sends nothing.
+                self.open_tab(path.clone());
+                if self.doc().and_then(|d| d.open.as_ref()) == Some(&path) {
+                    return self.send();
+                }
+            }
             Action::ToggleNewMenu => {
                 self.new_menu = match self.new_menu {
                     Some(_) => None,
@@ -1471,6 +1479,7 @@ impl App {
             drop: self.drop_folder(),
             dragging: self.drag.as_deref(),
             hovered: self.drop_target.as_deref(),
+            env_file: self.env.as_deref().and_then(|n| self.env_path(n)),
             sparks: &self.sparks,
             arrived: &self.arrived,
             pending: self
@@ -1716,16 +1725,8 @@ impl App {
                 ));
             }
         }
-        items.push(text("").into());
-        items.push(item("New environment…".into(), sidebar::Action::NewEnv));
-        if let Some(name) = &self.env
-            && let Some(path) = self.env_path(name)
-        {
-            items.push(item(
-                "Move to Trash…".into(),
-                sidebar::Action::DeleteEnv(path),
-            ));
-        }
+        // Adding and removing live on the ENVIRONMENT label's + and −, so the
+        // menu only chooses.
         popup(items, at)
     }
 

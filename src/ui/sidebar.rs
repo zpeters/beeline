@@ -44,6 +44,8 @@ pub enum Action {
     ToggleEnvMenu,
     /// Opens or closes the "+" menu beside REQUESTS.
     ToggleNewMenu,
+    /// A double-click on a request: open it and send it.
+    Trigger(PathBuf),
     /// Moves an environment file to the Trash.
     DeleteEnv(PathBuf),
     /// Opens a collection picked from the recents list.
@@ -78,6 +80,8 @@ pub struct Props<'a> {
     pub dragging: Option<&'a Path>,
     /// The row under the pointer. Only it and the selected row show ⋯.
     pub hovered: Option<&'a Path>,
+    /// The selected environment's file, for the − on its label.
+    pub env_file: Option<PathBuf>,
     /// Response times per request file, for this session only.
     pub sparks: &'a HashMap<PathBuf, Series>,
     /// When each request's newest response arrived, to animate its point.
@@ -140,7 +144,18 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
                 .on_press(Action::EditEnv),
         );
     }
-    col = col.push(column![section_label("ENVIRONMENT"), env_line]);
+    let env_header = row![
+        section_label("ENVIRONMENT"),
+        space::horizontal().width(Fill),
+        theme::button(text("+").size(theme::text_px()))
+            .style(theme::text_button)
+            .on_press(Action::NewEnv),
+        theme::button(text("−").size(theme::text_px()))
+            .style(theme::text_button)
+            .on_press_maybe(p.env_file.clone().map(Action::DeleteEnv)),
+    ]
+    .align_y(iced::Alignment::Center);
+    col = col.push(column![env_header, env_line]);
 
     // Layer three: the requests, labelled like the environment. New items
     // hide behind a "+" so the label leads.
@@ -191,7 +206,7 @@ fn tree_rows<'a>(nodes: &'a [Node], depth: u16, p: &Props<'a>, out: &mut Vec<Ele
                     dragging: p.dragging == Some(path.as_path()),
                     hovered: p.hovered == Some(path.as_path()),
                 };
-                out.push(indented(depth, row_area(label, path, state)));
+                out.push(indented(depth, row_area(label, path, state, None)));
                 if open {
                     if children.is_empty() {
                         out.push(indented(
@@ -265,7 +280,12 @@ fn request_row<'a>(
                 .align_x(iced::alignment::Horizontal::Right),
         );
     }
-    row_area(line.into(), path, state)
+    row_area(
+        line.into(),
+        path,
+        state,
+        Some(Action::Trigger(path.to_path_buf())),
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -281,7 +301,13 @@ struct RowState {
 /// click, and releasing it on a folder moves the item there (`App` decides
 /// which). Right-click and the ⋯ button open the context menu. The ⋯ shows
 /// only on the hovered or selected row; its space is kept so rows don't shift.
-fn row_area<'a>(content: Element<'a, Action>, path: &Path, state: RowState) -> Element<'a, Action> {
+/// `on_double_click` is set for request rows, where a double-click sends.
+fn row_area<'a>(
+    content: Element<'a, Action>,
+    path: &Path,
+    state: RowState,
+    on_double_click: Option<Action>,
+) -> Element<'a, Action> {
     let RowState {
         highlight,
         selected,
@@ -312,12 +338,15 @@ fn row_area<'a>(content: Element<'a, Action>, path: &Path, state: RowState) -> E
     let content = row![rule, line, more]
         .spacing(2)
         .align_y(iced::Alignment::Center);
-    mouse_area(content)
+    let mut area = mouse_area(content)
         .on_press(Action::Press(path.to_path_buf()))
         .on_enter(Action::Enter(path.to_path_buf()))
         .on_exit(Action::Exit(path.to_path_buf()))
-        .on_right_press(Action::ContextMenu(path.to_path_buf()))
-        .into()
+        .on_right_press(Action::ContextMenu(path.to_path_buf()));
+    if let Some(action) = on_double_click {
+        area = area.on_double_click(action);
+    }
+    area.into()
 }
 
 fn row_style(
