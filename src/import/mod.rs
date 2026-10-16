@@ -162,3 +162,165 @@ mod tests {
         assert!(matches!(&tree[0], Node::Folder { name, .. } if name == "API"));
     }
 }
+
+/// The sample files in `fixtures/import/`, run through each parser. Unit
+/// tests above use tiny inline cases; these check whole, realistic files.
+#[cfg(test)]
+mod fixtures {
+    use super::*;
+    use crate::collection::{request_count, scan};
+    use crate::model::{AuthKind, BodyKind, KeyValue};
+
+    fn curl(name: &str) -> RequestFile {
+        let text = match name {
+            "chrome" => include_str!("../../fixtures/import/curl/chrome-copy.sh"),
+            "github" => include_str!("../../fixtures/import/curl/github-docs.sh"),
+            "stripe" => include_str!("../../fixtures/import/curl/stripe-docs.sh"),
+            _ => unreachable!(),
+        };
+        curl::parse(text).unwrap().1
+    }
+
+    #[test]
+    fn curl_from_chrome_copy() {
+        let req = curl("chrome");
+        assert_eq!(req.method, "POST");
+        assert_eq!(
+            req.url,
+            "https://api.example.test/graph/v1/orders?expand=items&limit=20"
+        );
+        assert_eq!(req.params.len(), 2);
+        assert_eq!(req.auth.kind, AuthKind::Bearer);
+        assert_eq!(req.auth.token, "eyJhbGciOiJIUzI1NiJ9.demo.sig");
+        assert_eq!(req.headers.len(), 5, "authorization moved to the Auth tab");
+        assert_eq!(req.body.kind, BodyKind::Json);
+        assert!(req.body.text.contains("it's urgent"));
+    }
+
+    #[test]
+    fn curl_from_github_docs() {
+        let req = curl("github");
+        assert_eq!(req.method, "POST");
+        assert_eq!(req.url, "https://api.github.com/repos/OWNER/REPO/issues");
+        assert_eq!(req.auth.token, "<YOUR-TOKEN>");
+        assert_eq!(
+            req.headers,
+            vec![
+                KeyValue::new("Accept", "application/vnd.github+json"),
+                KeyValue::new("X-GitHub-Api-Version", "2022-11-28"),
+            ]
+        );
+        assert_eq!(req.body.kind, BodyKind::Json);
+        assert!(req.body.text.contains("I'm having a problem"));
+    }
+
+    #[test]
+    fn curl_from_stripe_docs() {
+        let req = curl("stripe");
+        assert_eq!(req.method, "POST");
+        assert_eq!(req.auth.kind, AuthKind::Basic);
+        assert_eq!(req.auth.username, "sk_test_EXAMPLE");
+        assert_eq!(req.auth.password, "");
+        assert_eq!(
+            req.body.fields,
+            vec![
+                KeyValue::new("name", "Jenny Rosen"),
+                KeyValue::new("email", "jenny.rosen@example.com"),
+            ]
+        );
+    }
+
+    fn petstore() -> Imported {
+        parse_file(include_str!(
+            "../../fixtures/import/openapi/petstore-expanded.yaml"
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn openapi_petstore_expanded() {
+        let imported = petstore();
+        assert_eq!(imported.name, "Swagger Petstore");
+        let names: Vec<&str> = imported.items.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["findPets", "addPet", "find pet by id", "deletePet"]
+        );
+
+        let find = &imported.items[0].req;
+        assert_eq!(find.url, "https://petstore.swagger.io/v2/pets");
+        assert_eq!(find.params.len(), 2);
+        assert!(find.params.iter().all(|p| !p.enabled), "both are optional");
+
+        let add = &imported.items[1].req;
+        assert_eq!(add.method, "POST");
+        assert_eq!(add.body.kind, BodyKind::Json);
+
+        assert_eq!(
+            imported.items[2].req.url,
+            "https://petstore.swagger.io/v2/pets/{{id}}"
+        );
+        assert_eq!(imported.items[3].req.method, "DELETE");
+    }
+
+    fn shop() -> Imported {
+        parse_file(include_str!(
+            "../../fixtures/import/postman/shop.postman_collection.json"
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn postman_shop_export() {
+        let imported = shop();
+        assert_eq!(imported.name, "Shop API");
+        let paths: Vec<String> = imported
+            .items
+            .iter()
+            .map(|i| [i.folders.clone(), vec![i.name.clone()]].concat().join("/"))
+            .collect();
+        assert_eq!(
+            paths,
+            vec![
+                "Orders/List orders",
+                "Orders/Get order",
+                "Orders/Create order",
+                "Orders/Upload receipt",
+                "Auth/Log in",
+                "Health",
+            ]
+        );
+
+        let list = &imported.items[0].req;
+        assert_eq!(list.url, "{{baseUrl}}/orders?status=open&page=1");
+        assert_eq!(list.params.len(), 3);
+        assert!(!list.params[2].enabled);
+        assert!(!list.headers[1].enabled);
+        assert_eq!(list.auth.token, "{{orderToken}}", "folder auth");
+
+        assert_eq!(imported.items[1].req.url, "{{baseUrl}}/orders/{{orderId}}");
+        assert!(imported.items[2].req.body.text.contains("BEE-1"));
+        assert_eq!(
+            imported.items[3].req.body.kind,
+            BodyKind::None,
+            "form-data skipped"
+        );
+
+        let login = &imported.items[4].req;
+        assert_eq!(login.auth.kind, AuthKind::None, "noauth override");
+        assert_eq!(login.body.fields.len(), 3);
+        assert!(!login.body.fields[2].enabled);
+
+        let health = &imported.items[5].req;
+        assert_eq!(health.auth.kind, AuthKind::Basic, "collection auth");
+        assert_eq!(health.auth.username, "admin");
+    }
+
+    #[test]
+    fn fixtures_write_and_scan_back() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), &petstore()).unwrap();
+        write(dir.path(), &shop()).unwrap();
+        assert_eq!(request_count(&scan(dir.path()).unwrap()), 4 + 6);
+    }
+}
