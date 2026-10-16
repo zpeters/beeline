@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 base64 = "0.23.1"
-eframe = { version = "0.37.0", features = ["persistence"] }
+iced = "0.14.0"
 rfd = "0.17.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }

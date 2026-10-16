@@ -12,21 +12,24 @@ mod vars;
 
 use std::path::PathBuf;
 
-use eframe::egui;
-
-fn main() -> eframe::Result {
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("beeline")
-            .with_inner_size([1100.0, 760.0])
-            .with_min_inner_size([640.0, 420.0]),
-        ..Default::default()
-    };
+fn main() -> iced::Result {
     // `beeline <folder>` opens that folder as the collection.
     let start = std::env::args_os().nth(1).map(PathBuf::from);
-    eframe::run_native(
-        "beeline",
-        options,
-        Box::new(|cc| Ok(Box::new(app::App::new(cc, start)))),
+    iced::application(
+        move || app::App::boot(start.clone()),
+        app::App::update,
+        app::App::view,
     )
+    .title("beeline")
+    .theme(ui::theme::app)
+    .settings(iced::Settings {
+        default_font: ui::theme::SANS,
+        default_text_size: iced::Pixels(ui::theme::TEXT),
+        fonts: vec![ui::theme::SANS_BYTES.into(), ui::theme::MONO_BYTES.into()],
+        ..Default::default()
+    })
+    .window_size((1100.0, 760.0))
+    .exit_on_close_request(false)
+    .subscription(app::App::subscription)
+    .run()
 }

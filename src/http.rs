@@ -8,7 +8,7 @@ use crate::resolve::Resolved;
 
 const MAX_BODY: u64 = 100 * 1024 * 1024;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Response {
     pub status: u16,
     pub reason: String,
