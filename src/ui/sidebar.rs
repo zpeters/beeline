@@ -71,10 +71,14 @@ pub struct Props<'a> {
     pub dragging: Option<&'a Path>,
 }
 
+/// One line of the environment dropdown. The last two are actions, not
+/// environments: they never show as the selection.
 #[derive(Debug, Clone, PartialEq)]
 enum EnvChoice {
     None,
     Named(String),
+    New,
+    Edit,
 }
 
 impl fmt::Display for EnvChoice {
@@ -82,6 +86,8 @@ impl fmt::Display for EnvChoice {
         match self {
             EnvChoice::None => write!(f, "No environment"),
             EnvChoice::Named(name) => write!(f, "{name}"),
+            EnvChoice::New => write!(f, "New environment…"),
+            EnvChoice::Edit => write!(f, "Edit this environment…"),
         }
     }
 }
@@ -128,6 +134,10 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
             .iter()
             .map(|(name, _)| EnvChoice::Named(name.clone())),
     );
+    choices.push(EnvChoice::New);
+    if p.env.is_some() {
+        choices.push(EnvChoice::Edit);
+    }
     let selected = Some(match p.env {
         None => EnvChoice::None,
         Some(name) => EnvChoice::Named(name.to_string()),
@@ -135,23 +145,16 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
     col = col.push(
         row![
             text("Env").size(theme::text_px()),
-            pick_list(choices, selected, |choice| {
-                Action::SelectEnv(match choice {
-                    EnvChoice::None => None,
-                    EnvChoice::Named(name) => Some(name),
-                })
+            pick_list(choices, selected, |choice| match choice {
+                EnvChoice::None => Action::SelectEnv(None),
+                EnvChoice::Named(name) => Action::SelectEnv(Some(name)),
+                EnvChoice::New => Action::NewEnv,
+                EnvChoice::Edit => Action::EditEnv,
             })
             .style(theme::pick)
             .width(Fill),
         ]
         .spacing(8),
-    );
-    col = col.push(
-        row![
-            theme::button("New env").on_press(Action::NewEnv),
-            theme::button("Edit env").on_press_maybe(p.env.map(|_| Action::EditEnv)),
-        ]
-        .spacing(6),
     );
 
     let mut rows: Vec<Element<'a, Action>> = Vec::new();
