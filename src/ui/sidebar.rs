@@ -36,6 +36,46 @@ pub enum Action {
     Settings,
     /// Adds the httpbin sample folder inside a folder.
     AddSamples(PathBuf),
+    /// Opens a collection picked from the recents list.
+    SwitchCollection(PathBuf),
+    NewCollection,
+    RenameCollection(PathBuf),
+    DeleteCollection(PathBuf),
+}
+
+/// A recent collection in the switcher, shown by its folder name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecentChoice(pub PathBuf);
+
+impl fmt::Display for RecentChoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = self
+            .0
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| self.0.display().to_string());
+        f.write_str(&name)
+    }
+}
+
+/// The switcher and the collection's New, Rename and Delete buttons.
+fn switcher<'a>(recents: &[PathBuf], root: Option<&Path>) -> Element<'a, Action> {
+    let choices: Vec<RecentChoice> = recents.iter().cloned().map(RecentChoice).collect();
+    let selected = root
+        .and_then(|r| recents.iter().find(|p| p.as_path() == r))
+        .cloned()
+        .map(RecentChoice);
+    let picker = pick_list(choices, selected, |c| Action::SwitchCollection(c.0))
+        .placeholder("Recent collections")
+        .style(theme::pick)
+        .width(Fill);
+    let mut actions = row![theme::button("New").on_press(Action::NewCollection)].spacing(6);
+    if let Some(root) = root {
+        actions = actions
+            .push(theme::button("Rename").on_press(Action::RenameCollection(root.to_path_buf())))
+            .push(theme::button("Delete").on_press(Action::DeleteCollection(root.to_path_buf())));
+    }
+    column![picker, actions].spacing(6).into()
 }
 
 /// The settings gear, at the bottom-left of the sidebar.
@@ -62,6 +102,8 @@ pub struct Props<'a> {
     pub drop: Option<&'a Path>,
     /// The item being dragged. Its row is marked while the drag is on.
     pub dragging: Option<&'a Path>,
+    /// Recently used collections, newest first.
+    pub recents: &'a [PathBuf],
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -89,7 +131,7 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
     if let Some(root) = p.root {
         header = header.push(text(root.display().to_string()).size(theme::small_px()));
     }
-    let mut col = column![header].spacing(10);
+    let mut col = column![header, switcher(p.recents, p.root)].spacing(10);
 
     let Some(root) = p.root else {
         col = col.push(text(

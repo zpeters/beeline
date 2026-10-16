@@ -6,6 +6,7 @@ mod format;
 mod http;
 mod model;
 mod query;
+mod recents;
 mod resolve;
 mod samples;
 mod seed;

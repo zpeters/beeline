@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::collection::{self, Node};
 use crate::model::{Environment, KeyValue, RequestFile};
+use crate::recents;
 use crate::settings::{self, Settings};
 use crate::tabs::Tabs;
 use crate::ui::tab_strip;
@@ -41,6 +42,9 @@ struct SavedState {
     /// Index into `tabs` of the active one.
     #[serde(default)]
     active_tab: usize,
+    /// Recently used collections, newest first.
+    #[serde(default)]
+    recents: Vec<PathBuf>,
 }
 
 /// `~/.config/beeline/state.json`, or None when there is no home folder.
@@ -174,6 +178,8 @@ enum NameFor {
     Rename(PathBuf),
     SaveAs(PathBuf),
     NewEnv(PathBuf),
+    NewCollection(PathBuf),
+    RenameCollection(PathBuf),
 }
 
 #[derive(Debug, Clone)]
@@ -203,6 +209,8 @@ pub struct App {
     next_doc: u64,
     modal: Option<Modal>,
     settings: Settings,
+    /// Recently used collections, newest first.
+    recents: Vec<PathBuf>,
     /// The operating system's light or dark mode, for the System theme.
     system_mode: Mode,
     /// Set when a dialog opens that needs its name field focused.
@@ -264,6 +272,7 @@ impl App {
             next_doc: 0,
             modal: None,
             settings,
+            recents: Vec::new(),
             system_mode: Mode::None,
             focus_name: false,
             after_save: None,
@@ -282,6 +291,8 @@ impl App {
         // No state file means this is the first run.
         let first_run = state_path().is_some_and(|p| !p.exists());
         let saved = load_state();
+        app.recents = saved.recents.clone();
+        recents::prune(&mut app.recents, |p| p.is_dir());
         match start {
             Some(start) => match start.canonicalize() {
                 Ok(root) if root.is_dir() => app.open_collection(root),
@@ -398,6 +409,7 @@ impl App {
             env: self.env.clone(),
             tabs,
             active_tab,
+            recents: self.recents.clone(),
         };
         if let Some(dir) = path.parent() {
             let _ = fs::create_dir_all(dir);
@@ -423,6 +435,7 @@ impl App {
             .and_then(|tree| collection::environments(&root).map(|envs| (tree, envs)));
         match scanned {
             Ok((tree, envs)) => {
+                recents::touch(&mut self.recents, &root);
                 self.collection = Some(Collection { root, tree, envs });
                 self.env = None;
                 self.vars.clear();
@@ -649,6 +662,23 @@ impl App {
                     None => Task::none(),
                 })
             }
+            NameFor::NewCollection(parent) => {
+                let root = collection::create_folder(parent, text)?;
+                self.open_collection(root);
+                Ok(Task::none())
+            }
+            NameFor::RenameCollection(root) => {
+                let new = collection::rename(root, text)?;
+                recents::retarget(&mut self.recents, root, &new);
+                self.retarget(root, &new);
+                if let Some(c) = &mut self.collection {
+                    c.root = new.clone();
+                }
+                self.reload_tree();
+                self.save_state();
+                self.notify("Renamed", false);
+                Ok(Task::none())
+            }
             NameFor::NewEnv(root) => {
                 let path = collection::create_env(root, text)?;
                 self.reload_tree();
@@ -662,6 +692,19 @@ impl App {
     fn delete(&mut self, path: &Path) {
         if let Err(e) = collection::delete(path) {
             self.notify(e, true);
+            return;
+        }
+        recents::forget(&mut self.recents, path);
+        // The current collection is gone: clear everything that belonged to it.
+        if self.collection.as_ref().is_some_and(|c| c.root == path) {
+            self.collection = None;
+            self.env = None;
+            self.vars.clear();
+            self.env_editor = None;
+            self.docs.clear();
+            self.expanded.clear();
+            self.save_state();
+            self.notify("Moved to Trash", false);
             return;
         }
         // Keep each affected tab's content as an unsaved untitled request.
@@ -754,6 +797,26 @@ impl App {
             }
             Action::EditEnv => self.edit_env(),
             Action::Settings => self.open_settings(),
+            Action::SwitchCollection(root) => {
+                if self.collection.as_ref().is_none_or(|c| c.root != root) {
+                    return self.guard(Then::OpenCollection(root));
+                }
+            }
+            Action::NewCollection => {
+                let mut dialog =
+                    rfd::FileDialog::new().set_title("Choose where the collection goes");
+                if let Some(c) = &self.collection {
+                    dialog = dialog.set_directory(&c.root);
+                }
+                if let Some(parent) = dialog.pick_folder() {
+                    self.open_name(NameFor::NewCollection(parent), "");
+                }
+            }
+            Action::RenameCollection(root) => {
+                let current = display_name(&root);
+                self.open_name(NameFor::RenameCollection(root), &current);
+            }
+            Action::DeleteCollection(root) => self.modal = Some(Modal::Delete(root)),
             Action::AddSamples(dir) => match samples::write(&dir) {
                 Ok(folder) => {
                     self.expanded.insert(dir);
@@ -1288,6 +1351,7 @@ impl App {
             expanded: &self.expanded,
             drop: self.drop_folder(),
             dragging: self.drag.as_deref(),
+            recents: &self.recents,
         })
         .map(Message::Sidebar);
         container(side)
@@ -1483,6 +1547,8 @@ impl App {
                     NameFor::Rename(_) => "Rename",
                     NameFor::SaveAs(_) => "Save request as",
                     NameFor::NewEnv(_) => "New environment",
+                    NameFor::NewCollection(_) => "New collection",
+                    NameFor::RenameCollection(_) => "Rename collection",
                 };
                 dialog::name(heading, text, error.as_deref()).map(Message::Dialog)
             }
@@ -1586,6 +1652,7 @@ mod tests {
                 PathBuf::from("/work/api/b.json"),
             ],
             active_tab: 1,
+            recents: vec![PathBuf::from("/work/api")],
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: SavedState = serde_json::from_str(&json).unwrap();
