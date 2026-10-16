@@ -12,7 +12,7 @@ supply `{{vars}}`. The current scope is in
 Request tabs (several open requests, one tab each) are in scope; see
 `docs/superpowers/specs/2026-10-16-request-tabs-design.md`.
 
-Out of scope for now: copy as cURL, history, scripting, assertions,
+Out of scope for now: request history, scripting, assertions,
 cookies, GraphQL, websockets, file uploads, a plugin system, and any
 cloud sync. Do not build them speculatively. Future ideas live in
 `TODO.md`.
@@ -26,6 +26,10 @@ Pure modules (no I/O, unit-tested):
 - `query.rs` — URL query string ⇄ params table sync.
 - `resolve.rs` — request + variables → exactly what goes on the wire.
 - `format.rs` — response display helpers (pretty JSON, sizes, times).
+- `curl.rs` — a resolved request as a shell-safe `curl` command.
+- `spark.rs` — session-only response-time series for sidebar sparklines.
+- `recents.rs` — the recent-collections list.
+- `settings.rs` — the settings file format and its limits.
 
 I/O modules:
 

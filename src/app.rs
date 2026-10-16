@@ -22,7 +22,7 @@ use crate::spark::{self, Series};
 use crate::tabs::Tabs;
 use crate::ui::tab_strip;
 use crate::ui::{dialog, editor, kv, response, sidebar, theme};
-use crate::{http, resolve, samples, seed};
+use crate::{curl, http, resolve, samples, seed};
 
 const NOTICE_TIME: Duration = Duration::from_secs(4);
 /// The two resizable panes: the collection sidebar and the request/response area.
@@ -266,6 +266,9 @@ pub enum Message {
     CloseTab,
     Send,
     Save,
+    /// Copy the active request, resolved with the current environment, as
+    /// a curl command.
+    CopyCurl,
     Sent(u64, u64, Result<http::Response, String>),
     CloseRequested(window::Id),
     CursorMoved(Point),
@@ -1037,6 +1040,17 @@ impl App {
             Message::Response(msg) => self.response_msg(msg),
             Message::Dialog(msg) => self.dialog_msg(msg),
             Message::Send => self.send(),
+            Message::CopyCurl => match self.doc().map(|d| resolve::resolve(&d.req, &self.vars)) {
+                Some(Ok(resolved)) => {
+                    self.notify("Copied as cURL", false);
+                    iced::clipboard::write(curl::command(&resolved))
+                }
+                Some(Err(e)) => {
+                    self.notify(e, true);
+                    Task::none()
+                }
+                None => Task::none(),
+            },
             Message::Save => {
                 if self.modal.is_none() {
                     self.save();
@@ -1541,6 +1555,7 @@ impl App {
                 text("")
             },
             space::horizontal().width(Fill),
+            theme::button(text("Copy cURL").size(theme::text_px())).on_press(Message::CopyCurl),
             theme::button(text("Open…").size(theme::text_px()))
                 .on_press(Message::Sidebar(sidebar::Action::OpenCollection)),
             theme::button(text("Save").size(theme::text_px()))

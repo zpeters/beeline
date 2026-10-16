@@ -4,8 +4,8 @@
 
 - mac packaging / install
 
-- Copy as cURL, request history (left out of the basic client on
-  purpose).
+- Request history (left out of the basic client on purpose; sparklines
+  keep response times for the session only).
 
 - **Import from API docs (Paprika-style).** Browse an API documentation
   site inside the app, then parse the page into a collection of

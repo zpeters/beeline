@@ -2,6 +2,7 @@
 
 mod app;
 mod collection;
+mod curl;
 mod format;
 mod http;
 mod model;
