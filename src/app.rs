@@ -1655,8 +1655,6 @@ impl App {
             },
             space::horizontal().width(Fill),
             theme::button(text("Copy cURL").size(theme::text_px())).on_press(Message::CopyCurl),
-            theme::button(text("Open…").size(theme::text_px()))
-                .on_press(Message::Sidebar(sidebar::Action::OpenCollection)),
             theme::button(text("Save").size(theme::text_px()))
                 .on_press_maybe(dirty.then_some(Message::Save)),
         ]
@@ -1768,13 +1766,20 @@ impl App {
             items.push(text("").into());
         }
         items.push(item(
+            "Open collection…".into(),
+            sidebar::Action::OpenCollection,
+        ));
+        items.push(item(
             "New collection…".into(),
             sidebar::Action::NewCollection,
         ));
         if let Some(root) = current {
             items.push(item("Reload".into(), sidebar::Action::Reload));
             items.push(item("Import cURL…".into(), sidebar::Action::ImportCurl));
-            items.push(item("Import file…".into(), sidebar::Action::ImportFile));
+            items.push(item(
+                "Import OpenAPI or Postman file…".into(),
+                sidebar::Action::ImportFile,
+            ));
             items.push(item(
                 "Import Bruno folder…".into(),
                 sidebar::Action::ImportBruno,

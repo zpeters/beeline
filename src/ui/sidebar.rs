@@ -112,21 +112,32 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
         .and_then(|r| r.file_name())
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "beeline".into());
-    let name: Element<'a, Action> = match p.root {
-        Some(_) => theme::button(text(format!("{title} ▾")).size(theme::heading_px()))
-            .style(theme::text_button)
-            .on_press(Action::ToggleCollectionMenu)
-            .into(),
-        None => text(title).size(theme::heading_px()).into(),
-    };
+    // The name always opens the collection menu, so recents, Open and New
+    // stay reachable even with no collection open.
+    let name = theme::button(text(format!("{title} ▾")).size(theme::heading_px()))
+        .style(theme::text_button)
+        .on_press(Action::ToggleCollectionMenu);
     let mut col = column![name].spacing(6);
 
     if p.root.is_none() {
-        col = col.push(text(
-            "Open a folder to use it as a collection. Each request is a JSON \
-             file; subfolders group them.",
-        ));
-        return col.push(gear()).height(Fill).into();
+        col = col
+            .push(text(
+                "Open a folder to use it as a collection. Each request is a JSON \
+                 file; subfolders group them.",
+            ))
+            .push(
+                row![
+                    theme::button("Open collection…").on_press(Action::OpenCollection),
+                    theme::button("New collection…").on_press(Action::NewCollection),
+                ]
+                .spacing(6),
+            );
+        // The tree's space stays empty, so the gear sits at the bottom as usual.
+        return col
+            .push(space::vertical().height(Fill))
+            .push(gear())
+            .height(Fill)
+            .into();
     }
 
     // Layer two: the environment. A tiny label says what it is; the name
