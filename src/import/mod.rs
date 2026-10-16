@@ -3,6 +3,7 @@
 
 pub mod curl;
 pub mod openapi;
+pub mod postman;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -52,7 +53,10 @@ pub fn parse_file(text: &str) -> Result<Imported, String> {
     if openapi::is_openapi(&doc) {
         return openapi::parse(&doc);
     }
-    Err("Not an OpenAPI 3 file".into())
+    if postman::is_postman(&doc) {
+        return postman::parse(&doc);
+    }
+    Err("Not an OpenAPI 3 spec or a Postman collection".into())
 }
 
 /// Writes one request at the top level of `root`. Returns its path.
@@ -133,6 +137,15 @@ mod tests {
         assert!(folder.join("pets/list 2.json").exists());
         assert!(folder.join("health.json").exists());
         assert_eq!(request_count(&scan(dir.path()).unwrap()), 3);
+    }
+
+    #[test]
+    fn parse_file_picks_the_format_from_the_content() {
+        let openapi = parse_file("openapi: 3.0.0\ninfo: {title: A}\npaths: {}\n").unwrap();
+        assert_eq!(openapi.name, "A");
+        let postman = parse_file(r#"{"info": {"name": "B"}, "item": []}"#).unwrap();
+        assert_eq!(postman.name, "B");
+        assert!(parse_file(r#"{"hello": 1}"#).is_err());
     }
 
     #[test]
