@@ -6,6 +6,7 @@ mod curl;
 mod format;
 mod http;
 mod import;
+mod menu;
 mod model;
 mod query;
 mod recents;

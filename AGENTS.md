@@ -45,6 +45,10 @@ UI (iced 0.14, Elm-style: `update` returns a `Task`, `view` builds
 
 - `app.rs` — app state (one `Doc` per request tab), file actions, modals,
   frame layout.
+- `menu.rs` — the macOS menu bar (muda): File, Collection and app menus
+  send `menu::Command`s to `App::update`. No Edit menu: its ⌘C/⌘V items
+  would take those keys from iced's text fields. On macOS the bar owns ⌘S
+  and ⌘W, so the in-window shortcut handler skips them.
 - `ui/editor.rs`, `ui/response.rs`, `ui/sidebar.rs`, `ui/tab_strip.rs`,
   `ui/dialog.rs`, `ui/theme.rs`, `ui/mod.rs` (shared key/value table).
   Widgets edit the state they are handed or return messages; they do no

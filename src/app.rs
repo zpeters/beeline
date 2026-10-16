@@ -15,6 +15,7 @@ use iced::{Element, Fill, FillPortion, Point, Subscription, Task, Theme, event, 
 use serde::{Deserialize, Serialize};
 
 use crate::collection::{self, Node};
+use crate::menu;
 use crate::model::{Environment, KeyValue, RequestFile};
 use crate::recents;
 use crate::settings::{self, Settings};
@@ -25,6 +26,8 @@ use crate::ui::{dialog, editor, kv, response, sidebar, theme};
 use crate::{curl, http, import, resolve, samples, seed};
 
 const NOTICE_TIME: Duration = Duration::from_secs(4);
+/// True where the native menu bar exists and owns the common shortcuts.
+const MENU_BAR: bool = cfg!(target_os = "macos");
 /// The two resizable panes: the collection sidebar and the request/response area.
 #[derive(Debug, Clone, Copy)]
 enum PaneKind {
@@ -232,6 +235,8 @@ pub struct App {
     /// The text of the curl paste dialog. iced edits it in place, so it
     /// lives here rather than in the modal.
     curl_paste: text_editor::Content,
+    /// The macOS menu bar, kept alive while the app runs.
+    menu_bar: menu::Bar,
     /// The operating system's light or dark mode, for the System theme.
     system_mode: Mode,
     /// Set when a dialog opens that needs its name field focused.
@@ -269,6 +274,10 @@ pub enum Message {
     /// A redraw tick while a sparkline animates. Nothing to update; the
     /// view reads the clock.
     Frame,
+    /// Installs the menu bar once the app has finished launching.
+    InstallMenu,
+    /// A menu bar item was chosen.
+    Menu(menu::Command),
     NewTab,
     CloseTab,
     Send,
@@ -307,6 +316,7 @@ impl App {
             arrived: HashMap::new(),
             epoch: Instant::now(),
             curl_paste: text_editor::Content::new(),
+            menu_bar: menu::Bar::default(),
             system_mode: Mode::None,
             focus_name: false,
             after_save: None,
@@ -346,7 +356,11 @@ impl App {
         {
             app.select_env(Some(name));
         }
-        (app, iced::system::theme().map(Message::SystemTheme))
+        let tasks = Task::batch([
+            iced::system::theme().map(Message::SystemTheme),
+            Task::done(Message::InstallMenu),
+        ]);
+        (app, tasks)
     }
 
     /// The app theme for the current settings.
@@ -1114,6 +1128,14 @@ impl App {
             }
             Message::Tabs(msg) => self.tab_msg(msg),
             Message::Frame => Task::none(),
+            Message::InstallMenu => {
+                match menu::install() {
+                    Ok(bar) => self.menu_bar = bar,
+                    Err(e) => self.notify(e, true),
+                }
+                Task::none()
+            }
+            Message::Menu(command) => self.menu_command(command),
             Message::SystemTheme(mode) => {
                 self.system_mode = mode;
                 Task::none()
@@ -1505,12 +1527,56 @@ impl App {
             event::listen_with(shortcut),
             window::close_requests().map(Message::CloseRequested),
             iced::system::theme_changes().map(Message::SystemTheme),
+            menu::commands().map(Message::Menu),
             if self.animating() {
                 window::frames().map(|_| Message::Frame)
             } else {
                 Subscription::none()
             },
         ])
+    }
+
+    /// Runs a menu bar command through the same paths as the in-app controls.
+    fn menu_command(&mut self, command: menu::Command) -> Task<Message> {
+        use menu::Command;
+        use sidebar::Action;
+        let root = self.collection.as_ref().map(|c| c.root.clone());
+        let needs_collection = |app: &mut Self| {
+            app.notify("Open a collection first", true);
+            Task::none()
+        };
+        match command {
+            Command::Settings => {
+                self.open_settings();
+                Task::none()
+            }
+            Command::NewRequest => self.update(Message::NewTab),
+            Command::Save => self.update(Message::Save),
+            Command::CloseTab => self.update(Message::CloseTab),
+            Command::NewCollection => self.sidebar_action(Action::NewCollection),
+            Command::OpenCollection => self.sidebar_action(Action::OpenCollection),
+            Command::NewFolder => match root {
+                Some(root) => self.sidebar_action(Action::NewFolder(root)),
+                None => needs_collection(self),
+            },
+            Command::ImportCurl | Command::ImportFile | Command::ImportBruno | Command::Reload
+                if root.is_none() =>
+            {
+                needs_collection(self)
+            }
+            Command::ImportCurl => self.sidebar_action(Action::ImportCurl),
+            Command::ImportFile => self.sidebar_action(Action::ImportFile),
+            Command::ImportBruno => self.sidebar_action(Action::ImportBruno),
+            Command::Reload => self.sidebar_action(Action::Reload),
+            Command::RenameCollection => match root {
+                Some(root) => self.sidebar_action(Action::RenameCollection(root)),
+                None => needs_collection(self),
+            },
+            Command::TrashCollection => match root {
+                Some(root) => self.sidebar_action(Action::DeleteCollection(root)),
+                None => needs_collection(self),
+            },
+        }
     }
 
     /// True while a sparkline moves: a point easing in, or a send in flight.
@@ -1780,6 +1846,11 @@ impl App {
                 sidebar::Action::SwitchCollection(recent.clone()),
             ));
         }
+        // On macOS the verbs live in the menu bar (File, Collection), so this
+        // menu only chooses a collection. Elsewhere it keeps them.
+        if cfg!(target_os = "macos") {
+            return popup(items, at);
+        }
         if !self.recents.is_empty() {
             items.push(text("").into());
         }
@@ -1992,9 +2063,15 @@ fn shortcut(event: iced::Event, _status: event::Status, _id: window::Id) -> Opti
                 keyboard::Key::Named(keyboard::key::Named::Escape) => {
                     Some(Message::Dialog(dialog::Msg::Cancel))
                 }
-                keyboard::Key::Character("s") if modifiers.command() => Some(Message::Save),
+                // On macOS the menu bar owns ⌘S and ⌘W; handling them here too
+                // would run them twice.
+                keyboard::Key::Character("s") if modifiers.command() && !MENU_BAR => {
+                    Some(Message::Save)
+                }
                 keyboard::Key::Character("t") if modifiers.command() => Some(Message::NewTab),
-                keyboard::Key::Character("w") if modifiers.command() => Some(Message::CloseTab),
+                keyboard::Key::Character("w") if modifiers.command() && !MENU_BAR => {
+                    Some(Message::CloseTab)
+                }
                 keyboard::Key::Named(keyboard::key::Named::Enter) if modifiers.command() => {
                     Some(Message::Send)
                 }
