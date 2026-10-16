@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use iced::widget::{column, container, mouse_area, pick_list, row, scrollable, text};
+use iced::widget::{column, container, mouse_area, pick_list, row, scrollable, space, text};
 use iced::{Element, Fill, Padding};
 
 use crate::collection::{self, Node};
@@ -32,6 +32,19 @@ pub enum Action {
     SelectEnv(Option<String>),
     NewEnv,
     EditEnv,
+    /// The gear at the bottom of the sidebar: opens the settings dialog.
+    Settings,
+}
+
+/// The settings gear, at the bottom-left of the sidebar.
+fn gear<'a>() -> Element<'a, Action> {
+    row![
+        theme::button(text("⚙").size(theme::heading_px() * 1.4))
+            .style(theme::text_button)
+            .on_press(Action::Settings),
+        space::horizontal().width(Fill),
+    ]
+    .into()
 }
 
 /// What the sidebar shows; `root` is `None` when no collection is open.
@@ -81,7 +94,7 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
             "Open a folder to use it as a collection. Each request is a JSON \
              file; subfolders group them.",
         ));
-        return col.into();
+        return col.push(gear()).height(Fill).into();
     };
 
     col = col.push(
@@ -132,7 +145,7 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
     tree_rows(p.tree, 0, &p, &mut rows);
     col = col.push(scrollable(column(rows).spacing(2).width(Fill)).height(Fill));
 
-    col.height(Fill).into()
+    col.push(gear()).height(Fill).into()
 }
 
 fn tree_rows<'a>(nodes: &'a [Node], depth: u16, p: &Props<'a>, out: &mut Vec<Element<'a, Action>>) {

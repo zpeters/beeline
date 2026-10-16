@@ -236,7 +236,6 @@ pub enum Message {
     Response(response::Msg),
     Dialog(dialog::Msg),
     Tabs(tab_strip::Msg),
-    OpenSettings,
     SystemTheme(Mode),
     NewTab,
     CloseTab,
@@ -754,6 +753,7 @@ impl App {
                 }
             }
             Action::EditEnv => self.edit_env(),
+            Action::Settings => self.open_settings(),
         }
         Task::none()
     }
@@ -890,10 +890,6 @@ impl App {
                 Task::none()
             }
             Message::Tabs(msg) => self.tab_msg(msg),
-            Message::OpenSettings => {
-                self.open_settings();
-                Task::none()
-            }
             Message::SystemTheme(mode) => {
                 self.system_mode = mode;
                 Task::none()
@@ -1305,15 +1301,7 @@ impl App {
                 dirty: d.dirty(),
             })
             .collect();
-        // The tab strip, with Settings at its end so it is reachable with no tabs open.
-        let settings_button =
-            theme::button(text("Settings").size(theme::text_px())).on_press(Message::OpenSettings);
-        let strip = row![
-            tab_strip::view(items, self.doc().map(|d| d.id)).map(Message::Tabs),
-            settings_button,
-        ]
-        .spacing(12)
-        .align_y(iced::Center);
+        let strip = tab_strip::view(items, self.doc().map(|d| d.id)).map(Message::Tabs);
 
         let Some(doc) = self.doc() else {
             let hint =
