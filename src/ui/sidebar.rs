@@ -117,26 +117,41 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
         return col.push(gear()).height(Fill).into();
     };
 
-    // Layer two: the environment, quieter than the collection name.
-    let env_name = p.env.unwrap_or("No environment");
-    col = col.push(
-        row![
-            theme::button(
-                text(format!("{env_name} ▾"))
-                    .size(theme::text_px())
-                    .style(theme::muted)
-                    .wrapping(iced::widget::text::Wrapping::WordOrGlyph),
-            )
-            .style(theme::text_button)
-            .width(Fill)
-            .on_press(Action::ToggleEnvMenu),
+    // Layer two: the environment. A tiny label says what it is; the name
+    // stays at full strength because it changes every request sent.
+    let env_name = format::ellipsize(p.env.unwrap_or("No environment"), 22);
+    let mut env_line = row![
+        theme::button(
+            text(format!("{env_name} ▾"))
+                .size(theme::text_px())
+                .wrapping(iced::widget::text::Wrapping::None),
+        )
+        .style(theme::text_button)
+        .on_press(Action::ToggleEnvMenu),
+    ]
+    .spacing(2)
+    .align_y(iced::Alignment::Center);
+    if p.env.is_some() {
+        env_line = env_line.push(text("·").style(theme::muted)).push(
             theme::button(text("Edit").size(theme::small_px()))
                 .style(theme::text_button)
-                .on_press_maybe(p.env.map(|_| Action::EditEnv)),
-        ]
-        .spacing(6)
-        .align_y(iced::Alignment::Center),
-    );
+                .on_press(Action::EditEnv),
+        );
+    }
+    col = col.push(column![
+        container(
+            text("ENVIRONMENT")
+                .size(theme::small_px() - 2.0)
+                .style(theme::muted),
+        )
+        .padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 10.0,
+        }),
+        env_line,
+    ]);
 
     // Actions as plain text: they serve the tree, so they should not outshout it.
     let action = |label: &'static str, msg: Action| {

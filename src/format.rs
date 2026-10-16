@@ -48,9 +48,36 @@ pub fn duration(d: Duration) -> String {
     }
 }
 
+/// Shortens `text` to at most `max` characters, ending in "…" when cut.
+pub fn ellipsize(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let keep: String = text.chars().take(max.saturating_sub(1)).collect();
+    format!("{}…", keep.trim_end())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ellipsize_keeps_short_text() {
+        assert_eq!(ellipsize("public", 10), "public");
+        assert_eq!(ellipsize("exactly10!", 10), "exactly10!");
+    }
+
+    #[test]
+    fn ellipsize_cuts_long_text_to_max_chars() {
+        let cut = ellipsize("staging-eu-west-replica", 10);
+        assert_eq!(cut, "staging-e…");
+        assert_eq!(cut.chars().count(), 10);
+    }
+
+    #[test]
+    fn ellipsize_does_not_end_on_a_space() {
+        assert_eq!(ellipsize("ab cd efgh", 4), "ab…");
+    }
 
     #[test]
     fn pretty_prints_json_in_original_key_order() {
