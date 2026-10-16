@@ -54,13 +54,13 @@ pub fn view(rows: &[KeyValue], checkboxes: bool) -> Element<'_, Msg> {
         line = line
             .push(
                 theme::text_input("key", &kv.key)
-                    .font(theme::MONO)
+                    .font(theme::mono())
                     .on_input(move |s| Msg::Key(i, s))
                     .width(Fill),
             )
             .push(
                 theme::text_input("value", &kv.value)
-                    .font(theme::MONO)
+                    .font(theme::mono())
                     .on_input(move |s| Msg::Value(i, s))
                     .width(Fill),
             )

@@ -8,13 +8,15 @@ use std::time::{Duration, Instant};
 
 use iced::keyboard;
 use iced::mouse;
+use iced::theme::Mode;
 use iced::widget::pane_grid::{self, Axis, Configuration, Content, PaneGrid};
 use iced::widget::{column, container, mouse_area, row, rule, space, stack, text, text_editor};
-use iced::{Element, Fill, FillPortion, Point, Subscription, Task, event, window};
+use iced::{Element, Fill, FillPortion, Point, Subscription, Task, Theme, event, window};
 use serde::{Deserialize, Serialize};
 
 use crate::collection::{self, Node};
 use crate::model::{Environment, KeyValue, RequestFile};
+use crate::settings::{self, Settings};
 use crate::tabs::Tabs;
 use crate::ui::tab_strip;
 use crate::ui::{dialog, editor, kv, response, sidebar, theme};
@@ -51,6 +53,28 @@ fn load_state() -> SavedState {
         .and_then(|p| fs::read_to_string(p).ok())
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
+}
+
+/// `~/.config/beeline/settings.json`, or None when there is no home folder.
+fn settings_path() -> Option<PathBuf> {
+    Some(PathBuf::from(std::env::var_os("HOME")?).join(".config/beeline/settings.json"))
+}
+
+/// The saved settings, or the defaults when there is no file or it is
+/// unreadable.
+pub fn load_settings() -> Settings {
+    settings_path()
+        .and_then(|p| fs::read_to_string(p).ok())
+        .map(|s| Settings::from_json(&s))
+        .unwrap_or_default()
+}
+
+fn save_settings(settings: &Settings) -> Result<(), String> {
+    let path = settings_path().ok_or("No home folder to save settings in")?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| format!("Cannot create {}: {e}", dir.display()))?;
+    }
+    fs::write(&path, settings.to_json()).map_err(|e| format!("Cannot save settings: {e}"))
 }
 
 struct Collection {
@@ -161,6 +185,13 @@ enum Modal {
         error: Option<String>,
     },
     Delete(PathBuf),
+    /// The settings form. `timeout` is the text being typed; `draft` holds
+    /// the other choices until Save.
+    Settings {
+        draft: Settings,
+        timeout: String,
+        error: Option<String>,
+    },
 }
 
 pub struct App {
@@ -171,6 +202,9 @@ pub struct App {
     /// The id the next tab gets. Responses find their tab by id.
     next_doc: u64,
     modal: Option<Modal>,
+    settings: Settings,
+    /// The operating system's light or dark mode, for the System theme.
+    system_mode: Mode,
     /// Set when a dialog opens that needs its name field focused.
     focus_name: bool,
     /// The action waiting on a scratch request being named and saved.
@@ -202,6 +236,8 @@ pub enum Message {
     Response(response::Msg),
     Dialog(dialog::Msg),
     Tabs(tab_strip::Msg),
+    OpenSettings,
+    SystemTheme(Mode),
     NewTab,
     CloseTab,
     Send,
@@ -216,7 +252,7 @@ pub enum Message {
 
 impl App {
     /// Opens `start` if given, otherwise the last collection used.
-    pub fn boot(start: Option<PathBuf>) -> (Self, Task<Message>) {
+    pub fn boot(start: Option<PathBuf>, settings: Settings) -> (Self, Task<Message>) {
         let mut app = Self {
             panes: pane_grid::State::with_configuration(Configuration::Split {
                 axis: Axis::Vertical,
@@ -228,6 +264,8 @@ impl App {
             docs: Tabs::default(),
             next_doc: 0,
             modal: None,
+            settings,
+            system_mode: Mode::None,
             focus_name: false,
             after_save: None,
             notice: None,
@@ -264,7 +302,20 @@ impl App {
         {
             app.select_env(Some(name));
         }
-        (app, Task::none())
+        (app, iced::system::theme().map(Message::SystemTheme))
+    }
+
+    /// The app theme for the current settings.
+    pub fn theme(&self) -> Theme {
+        theme::app_theme(self.settings.theme, self.system_mode)
+    }
+
+    fn open_settings(&mut self) {
+        self.modal = Some(Modal::Settings {
+            draft: self.settings.clone(),
+            timeout: self.settings.request_timeout_secs.to_string(),
+            error: None,
+        });
     }
 
     /// Reopens the tabs saved for this collection. Files that are gone are
@@ -784,6 +835,7 @@ impl App {
         if doc.pending {
             return Task::none();
         }
+        let timeout = self.settings.timeout();
         let resolved = match resolve::resolve(&doc.req, vars) {
             Ok(r) => r,
             Err(e) => {
@@ -798,7 +850,7 @@ impl App {
         // The oneshot channel works with any executor.
         let (tx, rx) = iced::futures::channel::oneshot::channel();
         std::thread::spawn(move || {
-            let _ = tx.send(http::send(&resolved));
+            let _ = tx.send(http::send(&resolved, timeout));
         });
         Task::perform(
             async move {
@@ -838,6 +890,14 @@ impl App {
                 Task::none()
             }
             Message::Tabs(msg) => self.tab_msg(msg),
+            Message::OpenSettings => {
+                self.open_settings();
+                Task::none()
+            }
+            Message::SystemTheme(mode) => {
+                self.system_mode = mode;
+                Task::none()
+            }
             Message::NewTab => {
                 if self.modal.is_none() {
                     self.new_tab();
@@ -902,6 +962,38 @@ impl App {
                     Task::none()
                 }
             }
+        }
+    }
+
+    /// Checks the settings form, saves it and applies it. The form stays
+    /// open, with an error, when the timeout is not a number in range.
+    fn settings_save(&mut self) {
+        let Some(Modal::Settings {
+            draft,
+            timeout,
+            error,
+        }) = &mut self.modal
+        else {
+            return;
+        };
+        let Ok(secs) = timeout.trim().parse::<u64>() else {
+            *error = Some("Enter a whole number of seconds".into());
+            return;
+        };
+        if !settings::TIMEOUT_SECS.contains(&secs) {
+            *error = Some("The timeout must be from 1 to 600 seconds".into());
+            return;
+        }
+        draft.request_timeout_secs = secs;
+        let saved = draft.clone().clamped();
+        match save_settings(&saved) {
+            Ok(()) => {
+                theme::use_settings(&saved);
+                self.settings = saved;
+                self.modal = None;
+                self.notify("Settings saved", false);
+            }
+            Err(e) => *error = Some(e),
         }
     }
 
@@ -1056,6 +1148,41 @@ impl App {
                 self.env_editor = None;
                 Task::none()
             }
+            dialog::Msg::SettingsTheme(choice) => {
+                if let Some(Modal::Settings { draft, .. }) = &mut self.modal {
+                    draft.theme = choice;
+                }
+                Task::none()
+            }
+            dialog::Msg::SettingsSans(font) => {
+                if let Some(Modal::Settings { draft, .. }) = &mut self.modal {
+                    draft.sans = font;
+                }
+                Task::none()
+            }
+            dialog::Msg::SettingsMono(font) => {
+                if let Some(Modal::Settings { draft, .. }) = &mut self.modal {
+                    draft.mono = font;
+                }
+                Task::none()
+            }
+            dialog::Msg::SettingsSize(size) => {
+                if let Some(Modal::Settings { draft, .. }) = &mut self.modal {
+                    draft.text_size = size;
+                }
+                Task::none()
+            }
+            dialog::Msg::SettingsTimeout(text) => {
+                if let Some(Modal::Settings { timeout, error, .. }) = &mut self.modal {
+                    *timeout = text;
+                    *error = None;
+                }
+                Task::none()
+            }
+            dialog::Msg::SettingsSave => {
+                self.settings_save();
+                Task::none()
+            }
             dialog::Msg::EnvTrash => {
                 if let Some(editor) = &self.env_editor {
                     self.modal = Some(Modal::Delete(editor.path.clone()));
@@ -1071,6 +1198,7 @@ impl App {
         Subscription::batch([
             event::listen_with(shortcut),
             window::close_requests().map(Message::CloseRequested),
+            iced::system::theme_changes().map(Message::SystemTheme),
         ])
     }
 
@@ -1102,21 +1230,16 @@ impl App {
         .on_resize(6, Message::PaneResized)
         .spacing(6);
 
-        let c = self.collection.as_ref();
-        let root_path = c.map(|c| c.root.display().to_string()).unwrap_or_default();
         let notice = self
             .notice
             .as_ref()
             .filter(|n| n.at.elapsed() < NOTICE_TIME)
             .map(|n| {
-                let t = text(n.text.as_str()).size(theme::SMALL);
+                let t = text(n.text.as_str()).size(theme::small_px());
                 if n.error { t.style(text::danger) } else { t }
             });
-        let mut status_row = row![
-            text(root_path).size(theme::SMALL),
-            space::horizontal().width(Fill)
-        ]
-        .spacing(8);
+        // The collection path is shown at the top of the sidebar.
+        let mut status_row = row![space::horizontal().width(Fill)].spacing(8);
         if let Some(n) = notice {
             status_row = status_row.push(n);
         }
@@ -1182,12 +1305,20 @@ impl App {
                 dirty: d.dirty(),
             })
             .collect();
-        let strip = tab_strip::view(items, self.doc().map(|d| d.id)).map(Message::Tabs);
+        // The tab strip, with Settings at its end so it is reachable with no tabs open.
+        let settings_button =
+            theme::button(text("Settings").size(theme::text_px())).on_press(Message::OpenSettings);
+        let strip = row![
+            tab_strip::view(items, self.doc().map(|d| d.id)).map(Message::Tabs),
+            settings_button,
+        ]
+        .spacing(12)
+        .align_y(iced::Center);
 
         let Some(doc) = self.doc() else {
             let hint =
                 text("No request open. Pick one in the sidebar, or press Cmd+T for a new one.")
-                    .size(theme::TEXT);
+                    .size(theme::text_px());
             return container(
                 column![strip, container(hint).center(Fill)]
                     .spacing(12)
@@ -1202,16 +1333,16 @@ impl App {
 
         let dirty = doc.dirty();
         let header = row![
-            text(self.title()).size(theme::HEADING),
+            text(self.title()).size(theme::heading_px()),
             if dirty {
-                text("•").size(theme::HEADING)
+                text("•").size(theme::heading_px())
             } else {
                 text("")
             },
             space::horizontal().width(Fill),
-            theme::button(text("Open…").size(theme::TEXT))
+            theme::button(text("Open…").size(theme::text_px()))
                 .on_press(Message::Sidebar(sidebar::Action::OpenCollection)),
-            theme::button(text("Save").size(theme::TEXT))
+            theme::button(text("Save").size(theme::text_px()))
                 .on_press_maybe(dirty.then_some(Message::Save)),
         ]
         .spacing(8);
@@ -1231,7 +1362,7 @@ impl App {
         .height(Fill);
 
         let response: Element<'_, Message> = if doc.pending {
-            text("Sending…").size(theme::TEXT).into()
+            text("Sending…").size(theme::text_px()).into()
         } else {
             match &doc.result {
                 Some(Ok(view)) => response::view(view).map(Message::Response),
@@ -1284,7 +1415,7 @@ impl App {
     /// A context menu at `at`. A click anywhere outside it closes it.
     fn context_menu(&self, path: &Path, at: Point) -> Element<'_, Message> {
         let item = |label: &'static str, action: sidebar::Action| -> Element<'_, Message> {
-            theme::button(text(label).size(theme::TEXT))
+            theme::button(text(label).size(theme::text_px()))
                 .style(theme::text_button)
                 .width(Fill)
                 .on_press(Message::Sidebar(action))
@@ -1352,6 +1483,11 @@ impl App {
                 };
                 dialog::name(heading, text, error.as_deref()).map(Message::Dialog)
             }
+            Modal::Settings {
+                draft,
+                timeout,
+                error,
+            } => dialog::settings(draft, timeout, error.as_deref()).map(Message::Dialog),
             Modal::Delete(path) => {
                 let what = if path.is_dir() {
                     format!(
@@ -1399,7 +1535,7 @@ fn shortcut(event: iced::Event, _status: event::Status, _id: window::Id) -> Opti
 /// A small card with the dragged item's name, drawn just below and to the
 /// right of the pointer. It takes no input, so it never blocks the rows.
 fn drag_ghost_layer(name: String, at: Point) -> Element<'static, Message> {
-    let card = container(text(name).size(theme::TEXT))
+    let card = container(text(name).size(theme::text_px()))
         .padding([4, 10])
         .style(theme::card);
     container(card)

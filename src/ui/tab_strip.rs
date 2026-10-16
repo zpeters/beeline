@@ -32,10 +32,10 @@ pub fn view(items: Vec<Item>, active: Option<u64>) -> Element<'static, Msg> {
         } else {
             item.label
         };
-        let name = button(text(label).size(theme::TEXT))
+        let name = button(text(label).size(theme::text_px()))
             .style(theme::text_button)
             .on_press(Msg::Activate(item.id));
-        let close = button(text("×").size(theme::TEXT))
+        let close = button(text("×").size(theme::text_px()))
             .style(theme::text_button)
             .on_press(Msg::Close(item.id));
         let bar =
@@ -50,7 +50,7 @@ pub fn view(items: Vec<Item>, active: Option<u64>) -> Element<'static, Msg> {
         tabs = tabs
             .push(column![row![name, close].spacing(4).align_y(Center), bar].width(iced::Shrink));
     }
-    let new = button(text("+").size(theme::TEXT))
+    let new = button(text("+").size(theme::text_px()))
         .style(theme::text_button)
         .on_press(Msg::New);
     scrollable(row![tabs, new].spacing(16).align_y(Center))

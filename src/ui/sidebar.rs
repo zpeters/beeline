@@ -70,9 +70,9 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
         .and_then(|r| r.file_name())
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "beeline".into());
-    let mut header = column![text(title).size(theme::HEADING)].spacing(2);
+    let mut header = column![text(title).size(theme::heading_px())].spacing(2);
     if let Some(root) = p.root {
-        header = header.push(text(root.display().to_string()).size(theme::SMALL));
+        header = header.push(text(root.display().to_string()).size(theme::small_px()));
     }
     let mut col = column![header].spacing(10);
 
@@ -105,7 +105,7 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
     });
     col = col.push(
         row![
-            text("Env").size(theme::TEXT),
+            text("Env").size(theme::text_px()),
             pick_list(choices, selected, |choice| {
                 Action::SelectEnv(match choice {
                     EnvChoice::None => None,
@@ -155,7 +155,10 @@ fn tree_rows<'a>(nodes: &'a [Node], depth: u16, p: &Props<'a>, out: &mut Vec<Ele
                 ));
                 if open {
                     if children.is_empty() {
-                        out.push(indented(depth + 1, text("Empty").size(theme::SMALL).into()));
+                        out.push(indented(
+                            depth + 1,
+                            text("Empty").size(theme::small_px()).into(),
+                        ));
                     }
                     tree_rows(children, depth + 1, p, out);
                 }
@@ -182,11 +185,11 @@ fn row_area<'a>(
     selected: bool,
     dragging: bool,
 ) -> Element<'a, Action> {
-    let line = container(text(label).size(theme::TEXT))
+    let line = container(text(label).size(theme::text_px()))
         .padding([4, 8])
         .width(Fill)
         .style(move |t| row_style(t, highlight, selected, dragging));
-    let more = theme::button(text("⋯").size(theme::TEXT))
+    let more = theme::button(text("⋯").size(theme::text_px()))
         .style(theme::text_button)
         .on_press(Action::ContextMenu(path.to_path_buf()));
     let content = row![line, more].spacing(4).align_y(iced::Alignment::Center);

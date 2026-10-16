@@ -83,18 +83,18 @@ pub fn view(view: &View) -> Element<'_, Msg> {
     let resp = &view.resp;
     let mut info = row![
         text(format!("{} {}", resp.status, resp.reason))
-            .size(theme::TEXT)
+            .size(theme::text_px())
             .color(status_color(resp.status)),
-        text(format::duration(resp.elapsed)).size(theme::SMALL),
-        text(format::size(resp.body.len())).size(theme::SMALL),
+        text(format::duration(resp.elapsed)).size(theme::small_px()),
+        text(format::size(resp.body.len())).size(theme::small_px()),
     ]
     .spacing(12);
     if view.is_json {
-        info = info.push(text("JSON").size(theme::SMALL));
+        info = info.push(text("JSON").size(theme::small_px()));
     }
     info = info
         .push(space::horizontal().width(Fill))
-        .push(theme::button(text("Copy body").size(theme::SMALL)).on_press(Msg::Copy));
+        .push(theme::button(text("Copy body").size(theme::small_px())).on_press(Msg::Copy));
 
     let tabs = row![
         tab_button(view.tab, Tab::Body, "Body".to_string()),
@@ -121,7 +121,7 @@ pub fn view(view: &View) -> Element<'_, Msg> {
             col.push(
                 text_editor(&view.content)
                     .style(theme::editor)
-                    .font(theme::MONO)
+                    .font(theme::mono())
                     .on_action(Msg::Edit)
                     .height(Fill),
             )
@@ -133,8 +133,8 @@ pub fn view(view: &View) -> Element<'_, Msg> {
             for (k, v) in &resp.headers {
                 rows = rows.push(
                     row![
-                        text(k.as_str()).size(theme::TEXT).width(220),
-                        text(v.as_str()).size(theme::TEXT).width(Fill),
+                        text(k.as_str()).size(theme::text_px()).width(220),
+                        text(v.as_str()).size(theme::text_px()).width(Fill),
                     ]
                     .spacing(12),
                 );

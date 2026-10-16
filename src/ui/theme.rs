@@ -2,32 +2,79 @@
 //! wrappers below match iced's own widgets, with corners rounded to
 //! `RADIUS`. Views call these instead of iced's helpers.
 
-use iced::widget::{self as w, column, container, pick_list, text, text_editor};
-use iced::{Border, Element, Fill, Font, Length, Theme};
+use std::sync::{PoisonError, RwLock};
 
-use crate::app::App;
+use iced::widget::{self as w, column, container, pick_list, text, text_editor};
+use iced::{Border, Color, Element, Fill, Font, Length, Theme, theme::Mode, theme::Palette};
+
+use crate::settings::{Settings, ThemeChoice};
 
 pub const SANS_BYTES: &[u8] = include_bytes!("../../assets/fonts/AtkinsonHyperlegible-Regular.otf");
 pub const MONO_BYTES: &[u8] =
     include_bytes!("../../assets/fonts/AtkinsonHyperlegibleMono-Regular.ttf");
-
-pub const SANS: Font = Font::with_name("Atkinson Hyperlegible");
-pub const MONO: Font = Font::with_name("Atkinson Hyperlegible Mono");
-
-pub const TEXT: f32 = 16.0;
-pub const SMALL: f32 = 13.0;
-pub const HEADING: f32 = 22.0;
+pub const INTER_BYTES: &[u8] = include_bytes!("../../assets/fonts/Inter-Variable.ttf");
+pub const PLEX_BYTES: &[u8] = include_bytes!("../../assets/fonts/IBMPlexMono-Regular.ttf");
 
 /// Corner radius for buttons, inputs and cards.
 pub const RADIUS: f32 = 10.0;
 
-/// Iced's light palette with a #62b6cb accent.
-pub fn app(_: &App) -> Theme {
+// The settings a view reads on each frame. `use_settings` sets them at
+// launch and whenever the settings dialog saves. Font families are read
+// once at launch, so changing them takes a restart.
+static TEXT_SIZE: RwLock<u16> = RwLock::new(16);
+static SANS_FONT: RwLock<Font> = RwLock::new(Font::with_name("Atkinson Hyperlegible"));
+static MONO_FONT: RwLock<Font> = RwLock::new(Font::with_name("Atkinson Hyperlegible Mono"));
+
+/// Copies the text size and fonts from `settings` into what views read.
+pub fn use_settings(settings: &Settings) {
+    *TEXT_SIZE.write().unwrap_or_else(PoisonError::into_inner) = settings.text_size;
+    *SANS_FONT.write().unwrap_or_else(PoisonError::into_inner) = font(settings.sans.family());
+    *MONO_FONT.write().unwrap_or_else(PoisonError::into_inner) = font(settings.mono.family());
+}
+
+/// A font by family name. The name must be a `'static` string, which the
+/// settings enums provide.
+fn font(family: &'static str) -> Font {
+    Font::with_name(family)
+}
+
+/// The body text size.
+pub fn text_px() -> f32 {
+    f32::from(*TEXT_SIZE.read().unwrap_or_else(PoisonError::into_inner))
+}
+
+/// Small text, such as the status line and table labels.
+pub fn small_px() -> f32 {
+    text_px() - 3.0
+}
+
+/// Headings.
+pub fn heading_px() -> f32 {
+    text_px() + 6.0
+}
+
+pub fn sans() -> Font {
+    *SANS_FONT.read().unwrap_or_else(PoisonError::into_inner)
+}
+
+pub fn mono() -> Font {
+    *MONO_FONT.read().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The app theme for a setting and the operating system's current mode.
+/// The accent is #62b6cb on the matching built-in palette.
+pub fn app_theme(choice: ThemeChoice, system: Mode) -> Theme {
+    let dark = match choice {
+        ThemeChoice::Light => false,
+        ThemeChoice::Dark => true,
+        ThemeChoice::System => system == Mode::Dark,
+    };
+    let base = if dark { Palette::DARK } else { Palette::LIGHT };
     Theme::custom(
-        "Accent".to_string(),
-        iced::theme::Palette {
-            primary: iced::Color::from_rgb8(98, 182, 203),
-            ..iced::theme::Palette::LIGHT
+        if dark { "Accent dark" } else { "Accent" }.to_string(),
+        Palette {
+            primary: Color::from_rgb8(98, 182, 203),
+            ..base
         },
     )
 }
@@ -108,7 +155,7 @@ pub fn tab<'a, T: PartialEq, M: Clone + 'a>(
     on_press: M,
 ) -> Element<'a, M> {
     let selected = current == this;
-    let label = button(text(label).size(TEXT))
+    let label = button(text(label).size(text_px()))
         .style(text_button)
         .on_press(on_press);
     let bar = container(w::space::horizontal())

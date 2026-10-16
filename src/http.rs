@@ -18,7 +18,7 @@ pub struct Response {
 }
 
 /// Non-2xx statuses are returned as normal responses so the user sees them.
-pub fn send(req: &Resolved) -> Result<Response, String> {
+pub fn send(req: &Resolved, timeout: Duration) -> Result<Response, String> {
     let method = Method::from_bytes(req.method.as_bytes())
         .map_err(|_| format!("Invalid method \"{}\"", req.method))?;
     let mut builder = Request::builder().method(method).uri(&req.url);
@@ -30,6 +30,7 @@ pub fn send(req: &Resolved) -> Result<Response, String> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .allow_non_standard_methods(true)
+        .timeout_global(Some(timeout))
         .build()
         .into();
 
@@ -98,17 +99,46 @@ mod tests {
         (url, handle)
     }
 
+    const TIMEOUT: Duration = Duration::from_secs(10);
+
+    #[test]
+    fn gives_up_after_the_timeout() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        // Accept the connection, then never answer.
+        let server = std::thread::spawn(move || {
+            let (_conn, _) = listener.accept().unwrap();
+            std::thread::sleep(Duration::from_secs(3));
+        });
+        let start = Instant::now();
+        let result = send(
+            &Resolved {
+                method: "GET".into(),
+                url,
+                headers: vec![],
+                body: vec![],
+            },
+            Duration::from_secs(1),
+        );
+        assert!(result.is_err());
+        assert!(start.elapsed() < Duration::from_secs(3));
+        server.join().unwrap();
+    }
+
     #[test]
     fn sends_headers_and_body_and_reads_response() {
         let (url, server) = serve_once(
             "HTTP/1.1 201 Created\r\nX-Test: yes\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
         );
-        let resp = send(&Resolved {
-            method: "POST".into(),
-            url: format!("{url}/things"),
-            headers: vec![("X-Client".into(), "beeline".into())],
-            body: b"{\"a\":1}".to_vec(),
-        })
+        let resp = send(
+            &Resolved {
+                method: "POST".into(),
+                url: format!("{url}/things"),
+                headers: vec![("X-Client".into(), "beeline".into())],
+                body: b"{\"a\":1}".to_vec(),
+            },
+            TIMEOUT,
+        )
         .unwrap();
         let seen = server.join().unwrap();
 
@@ -132,12 +162,15 @@ mod tests {
     fn error_status_is_a_normal_response() {
         let (url, server) =
             serve_once("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-        let resp = send(&Resolved {
-            method: "GET".into(),
-            url,
-            headers: vec![],
-            body: vec![],
-        })
+        let resp = send(
+            &Resolved {
+                method: "GET".into(),
+                url,
+                headers: vec![],
+                body: vec![],
+            },
+            TIMEOUT,
+        )
         .unwrap();
         server.join().unwrap();
         assert_eq!(resp.status, 404);
@@ -149,12 +182,15 @@ mod tests {
     #[test]
     #[ignore = "needs the internet"]
     fn live_https_get() {
-        let resp = send(&Resolved {
-            method: "GET".into(),
-            url: "https://jsonplaceholder.typicode.com/posts/1".into(),
-            headers: vec![("Accept".into(), "application/json".into())],
-            body: vec![],
-        })
+        let resp = send(
+            &Resolved {
+                method: "GET".into(),
+                url: "https://jsonplaceholder.typicode.com/posts/1".into(),
+                headers: vec![("Accept".into(), "application/json".into())],
+                body: vec![],
+            },
+            TIMEOUT,
+        )
         .unwrap();
         assert_eq!(resp.status, 200);
         assert!(String::from_utf8_lossy(&resp.body).contains("\"id\": 1"));

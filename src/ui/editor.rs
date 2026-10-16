@@ -128,12 +128,12 @@ pub fn view<'a>(
     let method = METHODS.iter().copied().find(|m| *m == req.method);
     // While a request is in flight, the same button cancels it.
     let send = if busy {
-        theme::button(text("Cancel").size(theme::TEXT)).on_press(Msg::Cancel)
+        theme::button(text("Cancel").size(theme::text_px())).on_press(Msg::Cancel)
     } else {
-        theme::button(text("Send").size(theme::TEXT)).on_press(Msg::Send)
+        theme::button(text("Send").size(theme::text_px())).on_press(Msg::Send)
     };
     let url = theme::text_input("https://example.com or {{base}}/path", &req.url)
-        .font(theme::MONO)
+        .font(theme::mono())
         .on_input(Msg::Url)
         .on_submit(Msg::Send)
         .width(Fill);
@@ -232,7 +232,7 @@ fn body_editor<'a>(req: &'a RequestFile, body: &'a text_editor::Content) -> Elem
             col = col.push(
                 text_editor(body)
                     .style(theme::editor)
-                    .font(theme::MONO)
+                    .font(theme::mono())
                     .on_action(Msg::Body)
                     .height(Fill),
             );
@@ -260,7 +260,7 @@ fn auth_editor(auth: &Auth) -> Element<'_, Msg> {
         AuthKind::Bearer => column![
             text("Token"),
             theme::text_input("{{token}}", &auth.token)
-                .font(theme::MONO)
+                .font(theme::mono())
                 .on_input(Msg::Token),
         ]
         .spacing(4)
