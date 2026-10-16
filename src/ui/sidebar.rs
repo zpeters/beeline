@@ -15,14 +15,28 @@ pub enum Action {
     NewFolder(PathBuf),
     Rename(PathBuf),
     Delete(PathBuf),
+    SelectEnv(Option<String>),
+    NewEnv,
+    EditEnv,
 }
 
-pub fn show(
-    ui: &mut egui::Ui,
-    root: Option<&Path>,
-    tree: &[Node],
-    selected: Option<&Path>,
-) -> Vec<Action> {
+/// What the sidebar shows; `root` is `None` when no collection is open.
+pub struct Props<'a> {
+    pub root: Option<&'a Path>,
+    pub tree: &'a [Node],
+    pub selected: Option<&'a Path>,
+    pub envs: &'a [(String, PathBuf)],
+    pub env: Option<&'a str>,
+}
+
+pub fn show(ui: &mut egui::Ui, props: Props<'_>) -> Vec<Action> {
+    let Props {
+        root,
+        tree,
+        selected,
+        envs,
+        env,
+    } = props;
     let mut actions = Vec::new();
 
     ui.add_space(4.0);
@@ -61,6 +75,39 @@ pub fn show(
         }
         if ui.button("⟳").on_hover_text("Reload from disk").clicked() {
             actions.push(Action::Reload);
+        }
+    });
+
+    ui.horizontal(|ui| {
+        ui.label("Env");
+        egui::ComboBox::from_id_salt("env")
+            .selected_text(env.unwrap_or("No environment"))
+            .width((ui.available_width() - 50.0).max(80.0))
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(env.is_none(), "No environment")
+                    .clicked()
+                {
+                    actions.push(Action::SelectEnv(None));
+                }
+                for (name, _) in envs {
+                    if ui
+                        .selectable_label(env == Some(name.as_str()), name)
+                        .clicked()
+                    {
+                        actions.push(Action::SelectEnv(Some(name.clone())));
+                    }
+                }
+                ui.separator();
+                if ui.selectable_label(false, "New environment…").clicked() {
+                    actions.push(Action::NewEnv);
+                }
+            });
+        if ui
+            .add_enabled(env.is_some(), egui::Button::new("Edit"))
+            .clicked()
+        {
+            actions.push(Action::EditEnv);
         }
     });
     ui.separator();

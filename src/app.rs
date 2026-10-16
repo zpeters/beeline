@@ -8,16 +8,44 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 
 use crate::collection::{self, Node};
-use crate::model::RequestFile;
-use crate::ui::{editor, response, sidebar};
+use crate::model::{Environment, KeyValue, RequestFile};
+use crate::ui::{self, editor, response, sidebar};
 use crate::{http, resolve};
 
 const KEY_COLLECTION: &str = "collection";
+const KEY_ENV: &str = "environment";
 const NOTICE_TIME: Duration = Duration::from_secs(4);
 
 struct Collection {
     root: PathBuf,
     tree: Vec<Node>,
+    envs: Vec<(String, PathBuf)>,
+}
+
+/// The environment editor window. Rows are edited as a list and written
+/// back as a map, so duplicate keys keep the last value.
+struct EnvEditor {
+    name: String,
+    path: PathBuf,
+    rows: Vec<KeyValue>,
+    saved: Vec<KeyValue>,
+}
+
+fn env_rows(env: &Environment) -> Vec<KeyValue> {
+    env.variables
+        .iter()
+        .map(|(k, v)| KeyValue::new(k.clone(), v.clone()))
+        .collect()
+}
+
+fn rows_env(rows: &[KeyValue]) -> Environment {
+    Environment {
+        variables: rows
+            .iter()
+            .filter(|kv| !kv.key.trim().is_empty())
+            .map(|kv| (kv.key.trim().to_string(), kv.value.clone()))
+            .collect(),
+    }
 }
 
 struct Notice {
@@ -39,6 +67,7 @@ enum NameFor {
     NewFolder(PathBuf),
     Rename(PathBuf),
     SaveAs(PathBuf),
+    NewEnv(PathBuf),
 }
 
 enum Modal {
@@ -76,6 +105,10 @@ pub struct App {
     modal: Option<Modal>,
     notice: Option<Notice>,
     quitting: bool,
+    /// Selected environment name and its variables.
+    env: Option<String>,
+    vars: BTreeMap<String, String>,
+    env_editor: Option<EnvEditor>,
 }
 
 impl App {
@@ -92,6 +125,9 @@ impl App {
             modal: None,
             notice: None,
             quitting: false,
+            env: None,
+            vars: BTreeMap::new(),
+            env_editor: None,
         };
         if let Some(start) = start {
             match start.canonicalize() {
@@ -102,6 +138,11 @@ impl App {
             && Path::new(&root).is_dir()
         {
             app.open_collection(PathBuf::from(root));
+        }
+        if let Some(name) = cc.storage.and_then(|s| s.get_string(KEY_ENV))
+            && app.has_env(&name)
+        {
+            app.select_env(Some(name));
         }
         app
     }
@@ -121,9 +162,14 @@ impl App {
     // --- collection and file actions ---
 
     fn open_collection(&mut self, root: PathBuf) {
-        match collection::scan(&root) {
-            Ok(tree) => {
-                self.collection = Some(Collection { root, tree });
+        let scanned = collection::scan(&root)
+            .and_then(|tree| collection::environments(&root).map(|envs| (tree, envs)));
+        match scanned {
+            Ok((tree, envs)) => {
+                self.collection = Some(Collection { root, tree, envs });
+                self.env = None;
+                self.vars.clear();
+                self.env_editor = None;
                 self.open = None;
                 self.req = RequestFile::default();
                 self.saved = RequestFile::default();
@@ -133,12 +179,71 @@ impl App {
         }
     }
 
+    /// Re-read the tree, the environment list and the selected
+    /// environment's variables from disk.
     fn reload_tree(&mut self) {
         let Some(c) = &mut self.collection else {
             return;
         };
-        match collection::scan(&c.root) {
-            Ok(tree) => c.tree = tree,
+        let scanned = collection::scan(&c.root)
+            .and_then(|tree| collection::environments(&c.root).map(|envs| (tree, envs)));
+        match scanned {
+            Ok((tree, envs)) => {
+                c.tree = tree;
+                c.envs = envs;
+            }
+            Err(e) => self.notify(e, true),
+        }
+        let env = self.env.take().filter(|name| self.has_env(name));
+        self.select_env(env);
+        if let Some(editor) = &self.env_editor
+            && !editor.path.exists()
+        {
+            self.env_editor = None;
+        }
+    }
+
+    fn has_env(&self, name: &str) -> bool {
+        self.env_path(name).is_some()
+    }
+
+    fn env_path(&self, name: &str) -> Option<PathBuf> {
+        self.collection
+            .as_ref()?
+            .envs
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, p)| p.clone())
+    }
+
+    fn select_env(&mut self, name: Option<String>) {
+        self.vars.clear();
+        if let Some(path) = name.as_deref().and_then(|n| self.env_path(n)) {
+            match collection::read_env(&path) {
+                Ok(env) => self.vars = env.variables,
+                Err(e) => self.notify(e, true),
+            }
+        }
+        self.env = name;
+    }
+
+    fn edit_env(&mut self) {
+        let Some(name) = self.env.clone() else {
+            return;
+        };
+        let Some(path) = self.env_path(&name) else {
+            return;
+        };
+        match collection::read_env(&path) {
+            Ok(env) => {
+                let rows = env_rows(&env);
+                self.env_editor = Some(EnvEditor {
+                    name,
+                    path,
+                    saved: rows.clone(),
+                    rows,
+                });
+            }
             Err(e) => self.notify(e, true),
         }
     }
@@ -231,6 +336,12 @@ impl App {
                 self.reload_tree();
                 self.notify("Saved", false);
             }
+            NameFor::NewEnv(root) => {
+                let path = collection::create_env(root, text)?;
+                self.reload_tree();
+                self.select_env(Some(collection::stem(&path)));
+                self.edit_env();
+            }
         }
         Ok(())
     }
@@ -279,6 +390,66 @@ impl App {
                 self.modal = Some(name_modal(NameFor::Rename(path), &current));
             }
             Action::Delete(path) => self.modal = Some(Modal::Delete(path)),
+            Action::SelectEnv(name) => {
+                self.select_env(name);
+                if self.env_editor.is_some() {
+                    self.edit_env();
+                }
+            }
+            Action::NewEnv => {
+                if let Some(c) = &self.collection {
+                    self.modal = Some(name_modal(NameFor::NewEnv(c.root.clone()), ""));
+                }
+            }
+            Action::EditEnv => self.edit_env(),
+        }
+    }
+
+    fn show_env_editor(&mut self, ctx: &egui::Context) {
+        let Some(editor) = &mut self.env_editor else {
+            return;
+        };
+        let dirty = editor.rows != editor.saved;
+        let (mut save, mut close, mut trash) = (false, false, false);
+        egui::Window::new(format!("Environment: {}", editor.name))
+            .id(egui::Id::unique("env-editor"))
+            .collapsible(false)
+            .default_width(480.0)
+            .show(ctx, |ui| {
+                ui.weak("Use {{name}} in the URL, params, headers, body and auth.");
+                ui.add_space(4.0);
+                egui::ScrollArea::vertical()
+                    .max_height(360.0)
+                    .show(ui, |ui| {
+                        ui::kv_table_plain(ui, "env-vars", &mut editor.rows);
+                    });
+                ui.separator();
+                ui.horizontal(|ui| {
+                    save = ui.add_enabled(dirty, egui::Button::new("Save")).clicked();
+                    close = ui.button(if dirty { "Discard" } else { "Close" }).clicked();
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        trash = ui.button("Move to Trash…").clicked();
+                    });
+                });
+            });
+
+        if save {
+            let env = rows_env(&editor.rows);
+            match collection::write_env(&editor.path, &env) {
+                Ok(()) => {
+                    editor.rows = env_rows(&env);
+                    editor.saved = editor.rows.clone();
+                    if self.env.as_deref() == Some(editor.name.as_str()) {
+                        self.vars = env.variables;
+                    }
+                    self.notify("Environment saved", false);
+                }
+                Err(e) => self.notify(e, true),
+            }
+        } else if close {
+            self.env_editor = None;
+        } else if trash {
+            self.modal = Some(Modal::Delete(editor.path.clone()));
         }
     }
 
@@ -287,7 +458,7 @@ impl App {
     /// Resolve on the UI thread (cheap, and errors show at once), then
     /// send on a worker thread so the UI stays responsive.
     fn send(&mut self, ctx: &egui::Context) {
-        let resolved = match resolve::resolve(&self.req, &BTreeMap::new()) {
+        let resolved = match resolve::resolve(&self.req, &self.vars) {
             Ok(r) => r,
             Err(e) => {
                 self.result = Some(Err(e));
@@ -420,6 +591,7 @@ fn modal_body(ui: &mut egui::Ui, modal: Modal, title: &str, scratch: bool) -> Ch
                 NameFor::NewFolder(_) => "New folder",
                 NameFor::Rename(_) => "Rename",
                 NameFor::SaveAs(_) => "Save request as",
+                NameFor::NewEnv(_) => "New environment",
             });
             let edit = ui.add(
                 egui::TextEdit::singleline(&mut text)
@@ -488,6 +660,7 @@ impl eframe::App for App {
             .map(|c| c.root.to_string_lossy().into_owned())
             .unwrap_or_default();
         storage.set_string(KEY_COLLECTION, root);
+        storage.set_string(KEY_ENV, self.env.clone().unwrap_or_default());
     }
 
     fn ui(&mut self, root: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -549,11 +722,17 @@ impl eframe::App for App {
             .resizable(true)
             .default_size(240.0)
             .show(root, |ui| {
-                let (root_dir, tree) = match &self.collection {
-                    Some(c) => (Some(c.root.as_path()), c.tree.as_slice()),
-                    None => (None, &[][..]),
-                };
-                actions = sidebar::show(ui, root_dir, tree, self.open.as_deref());
+                let c = self.collection.as_ref();
+                actions = sidebar::show(
+                    ui,
+                    sidebar::Props {
+                        root: c.map(|c| c.root.as_path()),
+                        tree: c.map(|c| c.tree.as_slice()).unwrap_or_default(),
+                        selected: self.open.as_deref(),
+                        envs: c.map(|c| c.envs.as_slice()).unwrap_or_default(),
+                        env: self.env.as_deref(),
+                    },
+                );
             });
 
         let title = self.title();
@@ -576,7 +755,7 @@ impl eframe::App for App {
                             .clicked();
                     });
                 });
-                send |= editor::show(ui, &mut self.req, &mut self.tab, busy);
+                send |= editor::show(ui, &mut self.req, &mut self.tab, busy, &self.vars);
             });
 
         egui::CentralPanel::default().show(root, |ui| {
@@ -607,6 +786,7 @@ impl eframe::App for App {
         if send && !busy && !modal_open {
             self.send(&ctx);
         }
+        self.show_env_editor(&ctx);
         self.show_modal(&ctx);
     }
 }

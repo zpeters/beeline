@@ -1,11 +1,13 @@
 //! The request editor: method, URL, Send, and the Params / Headers /
 //! Body / Auth tabs.
 
+use std::collections::BTreeMap;
+
 use eframe::egui;
 
 use crate::model::{Auth, AuthKind, Body, BodyKind, KeyValue, METHODS, RequestFile};
-use crate::query;
 use crate::ui::kv_table;
+use crate::{query, vars};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Tab {
@@ -23,8 +25,41 @@ fn count_label(name: &str, rows: &[KeyValue]) -> String {
     }
 }
 
-/// Draws the editor. Returns true when the user asked to send.
-pub fn show(ui: &mut egui::Ui, req: &mut RequestFile, tab: &mut Tab, busy: bool) -> bool {
+/// Every `{{name}}` the request would send that `vars` lacks.
+fn unknown_vars(req: &RequestFile, vars: &BTreeMap<String, String>) -> Vec<String> {
+    let mut text = req.url.clone();
+    let mut add = |rows: &[KeyValue]| {
+        for kv in rows.iter().filter(|kv| kv.enabled) {
+            text.push_str(&kv.key);
+            text.push_str(&kv.value);
+        }
+    };
+    add(&req.headers);
+    match req.body.kind {
+        BodyKind::None => {}
+        BodyKind::Json | BodyKind::Text => text.push_str(&req.body.text),
+        BodyKind::Form => add(&req.body.fields),
+    }
+    match req.auth.kind {
+        AuthKind::None => {}
+        AuthKind::Bearer => text.push_str(&req.auth.token),
+        AuthKind::Basic => {
+            text.push_str(&req.auth.username);
+            text.push_str(&req.auth.password);
+        }
+    }
+    vars::missing(&text, vars)
+}
+
+/// Draws the editor. `vars` are the selected environment's variables,
+/// used only for hints. Returns true when the user asked to send.
+pub fn show(
+    ui: &mut egui::Ui,
+    req: &mut RequestFile,
+    tab: &mut Tab,
+    busy: bool,
+    vars: &BTreeMap<String, String>,
+) -> bool {
     let mut send = false;
 
     ui.horizontal(|ui| {
@@ -49,6 +84,9 @@ pub fn show(ui: &mut egui::Ui, req: &mut RequestFile, tab: &mut Tab, busy: bool)
         if url.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             send = true;
         }
+        if req.url.contains("{{") {
+            url.on_hover_text(vars::interpolate(&req.url, vars));
+        }
         let label = if busy { "…" } else { "Send" };
         send |= ui
             .add_enabled(
@@ -57,6 +95,15 @@ pub fn show(ui: &mut egui::Ui, req: &mut RequestFile, tab: &mut Tab, busy: bool)
             )
             .clicked();
     });
+
+    let unknown = unknown_vars(req, vars);
+    if !unknown.is_empty() {
+        let names: Vec<String> = unknown.iter().map(|n| format!("{{{{{n}}}}}")).collect();
+        ui.colored_label(
+            ui.visuals().warn_fg_color,
+            format!("Not in the environment: {}", names.join(", ")),
+        );
+    }
 
     ui.add_space(4.0);
     ui.horizontal(|ui| {

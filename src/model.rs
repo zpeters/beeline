@@ -1,6 +1,8 @@
 //! The on-disk JSON format. Every field has a default, so a hand-written
 //! file can be as short as `{"url": "https://example.com"}`.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 pub const METHODS: [&str; 7] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
@@ -128,6 +130,13 @@ pub struct Auth {
     pub username: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub password: String,
+}
+
+/// An environment file: `{"variables": {"base": "https://..."}}`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Environment {
+    pub variables: BTreeMap<String, String>,
 }
 
 /// Pretty JSON (2-space indent) with a trailing newline, for small diffs.

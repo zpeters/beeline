@@ -12,15 +12,26 @@ use crate::model::KeyValue;
 /// Editable key/value rows with enable checkboxes. Returns true when
 /// anything changed.
 pub fn kv_table(ui: &mut egui::Ui, id: &str, rows: &mut Vec<KeyValue>) -> bool {
+    kv_rows(ui, id, rows, true)
+}
+
+/// Like `kv_table`, without the enable checkboxes.
+pub fn kv_table_plain(ui: &mut egui::Ui, id: &str, rows: &mut Vec<KeyValue>) -> bool {
+    kv_rows(ui, id, rows, false)
+}
+
+fn kv_rows(ui: &mut egui::Ui, id: &str, rows: &mut Vec<KeyValue>, checkboxes: bool) -> bool {
     let mut changed = false;
     let mut remove = None;
     let value_width = (ui.available_width() - 260.0).max(120.0);
     egui::Grid::new(id)
-        .num_columns(4)
+        .num_columns(if checkboxes { 4 } else { 3 })
         .spacing([6.0, 4.0])
         .show(ui, |ui| {
             for (i, row) in rows.iter_mut().enumerate() {
-                changed |= ui.checkbox(&mut row.enabled, "").changed();
+                if checkboxes {
+                    changed |= ui.checkbox(&mut row.enabled, "").changed();
+                }
                 changed |= ui
                     .add(
                         egui::TextEdit::singleline(&mut row.key)

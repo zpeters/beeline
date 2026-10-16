@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::model::{RequestFile, to_json};
+use crate::model::{Environment, RequestFile, to_json};
 
 /// Reserved folder at the collection root; not shown in the request tree.
 pub const ENV_DIR: &str = "environments";
@@ -152,6 +152,45 @@ pub fn rename(path: &Path, new_name: &str) -> Result<PathBuf, String> {
     Ok(target)
 }
 
+/// Environments as `(name, path)`, sorted by name. No `environments/`
+/// folder means no environments.
+pub fn environments(root: &Path) -> Result<Vec<(String, PathBuf)>, String> {
+    let dir = root.join(ENV_DIR);
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut envs: Vec<(String, PathBuf)> = fs::read_dir(&dir)
+        .map_err(|e| err("read", &dir, e))?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == EXT))
+        .filter(|p| !is_hidden(&stem(p)))
+        .map(|p| (stem(&p), p))
+        .collect();
+    envs.sort_by_key(|(name, _)| name.to_lowercase());
+    Ok(envs)
+}
+
+pub fn read_env(path: &Path) -> Result<Environment, String> {
+    let text = fs::read_to_string(path).map_err(|e| err("read", path, e))?;
+    serde_json::from_str(&text).map_err(|e| err("parse", path, e))
+}
+
+pub fn write_env(path: &Path, env: &Environment) -> Result<(), String> {
+    write_atomic(path, &to_json(env))
+}
+
+/// Create an empty `environments/<name>.json`. Fails if it exists.
+pub fn create_env(root: &Path, name: &str) -> Result<PathBuf, String> {
+    let dir = root.join(ENV_DIR);
+    fs::create_dir_all(&dir).map_err(|e| err("create", &dir, e))?;
+    let path = dir.join(format!("{}.{EXT}", validate_name(name)?));
+    if path.exists() {
+        return Err(format!("Environment \"{}\" already exists", stem(&path)));
+    }
+    write_env(&path, &Environment::default())?;
+    Ok(path)
+}
+
 /// Move a request file or folder to the system trash (recoverable).
 pub fn delete(path: &Path) -> Result<(), String> {
     trash::delete(path).map_err(|e| err("move to trash", path, e))
@@ -277,6 +316,29 @@ mod tests {
         let new = rename(&req, "Users").unwrap();
         assert_eq!(scan(dir.path()).unwrap().len(), 1);
         assert_eq!(stem(&new), "Users");
+    }
+
+    #[test]
+    fn lists_creates_and_round_trips_environments() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(environments(dir.path()).unwrap().is_empty());
+
+        let prod = create_env(dir.path(), "prod").unwrap();
+        create_env(dir.path(), "Dev").unwrap();
+        touch(&dir.path().join("environments/notes.txt"), "");
+        let names: Vec<String> = environments(dir.path())
+            .unwrap()
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        assert_eq!(names, vec!["Dev", "prod"]);
+        assert!(create_env(dir.path(), "prod").is_err());
+
+        let mut env = read_env(&prod).unwrap();
+        assert!(env.variables.is_empty());
+        env.variables.insert("base".into(), "https://x".into());
+        write_env(&prod, &env).unwrap();
+        assert_eq!(read_env(&prod).unwrap(), env);
     }
 
     #[test]
