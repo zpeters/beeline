@@ -196,7 +196,25 @@ pub fn create_env(root: &Path, name: &str) -> Result<PathBuf, String> {
 
 /// Move a request file or folder to the system trash (recoverable).
 pub fn delete(path: &Path) -> Result<(), String> {
-    trash::delete(path).map_err(|e| err("move to trash", path, e))
+    trash_context()
+        .delete(path)
+        .map_err(|e| err("move to trash", path, e))
+}
+
+/// The system trash. On macOS this uses the file manager, not Finder. The
+/// crate's default asks Finder through `osascript` and waits for it, and
+/// Finder answers some failures (such as a folder whose files are still in
+/// iCloud) with a modal alert. Until someone dismissed that alert, the app
+/// froze. The file manager returns an error instead, which the app shows.
+fn trash_context() -> trash::TrashContext {
+    #[allow(unused_mut)]
+    let mut ctx = trash::TrashContext::default();
+    #[cfg(target_os = "macos")]
+    {
+        use trash::macos::{DeleteMethod, TrashContextExtMacos};
+        ctx.set_delete_method(DeleteMethod::NsFileManager);
+    }
+    ctx
 }
 
 /// Copy a request beside itself as "<name> copy", "<name> copy 2", ...
@@ -340,6 +358,16 @@ mod tests {
             panic!("expected folder")
         };
         assert_eq!(names(children), vec!["list"]);
+    }
+
+    #[test]
+    fn delete_moves_a_folder_with_files_to_the_trash() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("beeline-trash-test");
+        touch(&folder.join("a.json"), "{}");
+        touch(&folder.join("sub/b.json"), "{}");
+        delete(&folder).unwrap();
+        assert!(!folder.exists());
     }
 
     #[test]
