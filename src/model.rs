@@ -131,7 +131,6 @@ pub struct Auth {
 }
 
 /// Pretty JSON (2-space indent) with a trailing newline, for small diffs.
-#[cfg(test)]
 pub fn to_json<T: Serialize>(value: &T) -> String {
     let mut s = serde_json::to_string_pretty(value).expect("model types always serialize");
     s.push('\n');

@@ -3,6 +3,7 @@
 
 pub mod editor;
 pub mod response;
+pub mod sidebar;
 
 use eframe::egui;
 
