@@ -9,10 +9,13 @@ clone. Collections are folders of plain JSON request files; environments
 supply `{{vars}}`. The current scope is in
 `docs/superpowers/specs/2026-10-15-basic-full-client-design.md`.
 
-Out of scope for now: request tabs, copy as cURL, history, scripting,
-assertions, cookies, GraphQL, websockets, file uploads, a plugin system,
-and any cloud sync. Do not build them speculatively. Future ideas live in
-`TODO.md`.
+Out of scope for now: tabs for several open requests, copy as cURL,
+history, scripting, assertions, cookies, GraphQL, websockets, file
+uploads, a plugin system, and any cloud sync. Do not build them
+speculatively. Future ideas live in `TODO.md`.
+
+The request editor's own tabs (Params, Headers, Body, Auth, Vars) are in
+scope; they are not the "tabs for several open requests" above.
 
 ## Stack and layout
 
