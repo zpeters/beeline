@@ -2057,7 +2057,7 @@ impl App {
 }
 
 /// Window-level input: the pointer position (for context menus), Cmd+S
-/// saves, Cmd+T and Cmd+W open and close tabs, Cmd+Enter sends, and Escape
+/// saves, Cmd+T (or Cmd+N) and Cmd+W open and close tabs, Cmd+Enter sends, and Escape
 /// closes a menu or dialog.
 fn shortcut(event: iced::Event, _status: event::Status, _id: window::Id) -> Option<Message> {
     match event {
@@ -2078,6 +2078,10 @@ fn shortcut(event: iced::Event, _status: event::Status, _id: window::Id) -> Opti
                     Some(Message::Save)
                 }
                 keyboard::Key::Character("t") if modifiers.command() => Some(Message::NewTab),
+                // New Request: the menu bar's ⌘N on macOS.
+                keyboard::Key::Character("n") if modifiers.command() && !MENU_BAR => {
+                    Some(Message::NewTab)
+                }
                 keyboard::Key::Character("w") if modifiers.command() && !MENU_BAR => {
                     Some(Message::CloseTab)
                 }
