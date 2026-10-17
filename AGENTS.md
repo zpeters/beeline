@@ -84,6 +84,7 @@ just run          # launch the app
 just check        # fmt --check + clippy -D warnings + test
 just bundle-mac   # build target/release/bundle/osx/beeline.app (and a .dmg)
 just install-mac  # copy beeline.app into /Applications
+just dmg          # build dist/beeline-<version>.dmg (drag-to-Applications)
 ```
 
 ## Version control

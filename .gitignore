@@ -2,3 +2,4 @@
 .direnv/
 .superpowers/
 /target/
+/dist
