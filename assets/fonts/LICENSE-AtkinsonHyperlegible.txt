@@ -1,0 +1,13 @@
+Atkinson Hyperlegible and Atkinson Hyperlegible Mono
+Copyright (c) 2020, 2024 Braille Institute of America, Inc.,
+a 501(c)(3) Charitable Organization.
+
+The licence below is copied from the fonts' own metadata (name table):
+
+  Braille Institute of America, Inc. provides Atkinson Hyperlegible for
+  use, without derivatives or alteration, to the public free of charge
+  for all non-commercial and commercial work. No attribution required.
+
+  https://www.BrailleInstitute.org/
+
+beeline ships these font files unaltered.

@@ -2,6 +2,12 @@
 name = "beeline"
 version = "0.1.0"
 edition = "2024"
+description = "A minimal desktop API client. Collections are plain folders of JSON files."
+license = "GPL-3.0-or-later"
+repository = "https://github.com/zpeters/beeline"
+readme = "README.md"
+keywords = ["api", "http", "rest", "client", "gui"]
+categories = ["development-tools", "gui"]
 
 [package.metadata.bundle]
 name = "beeline"
