@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/zpeters/beeline/actions/workflows/ci.yml"><img src="https://github.com/zpeters/beeline/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-1a2540" alt="License: GPL-3.0-or-later"></a>
-  <img src="https://img.shields.io/badge/platform-macOS-d9a83a" alt="Platform: macOS">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-d9a83a" alt="Platform: macOS and Linux">
   <img src="https://img.shields.io/badge/built%20with-Rust%20%2B%20iced-1a2540" alt="Built with Rust and iced">
 </p>
 
@@ -65,8 +65,9 @@ cargo run -- examples/demo   # open a folder as the collection
 just install-mac             # build beeline.app and copy it into /Applications
 ```
 
-beeline is built and tested on macOS. It may build on Linux and Windows,
-but nobody has tried yet. Reports are welcome.
+CI builds and tests beeline on macOS and Linux. On Linux, build it from
+source as above (`cargo run --release`); there is no package yet. Windows
+is untested. Reports are welcome.
 
 ## Shortcuts
 
@@ -76,10 +77,10 @@ but nobody has tried yet. Reports are welcome.
 | ⌘ S | Save |
 | ⌘ T | New tab |
 | ⌘ W | Close tab |
-| ⌘ N | New request (macOS menu bar) |
+| ⌘ N | New request |
 
-On Linux and Windows, use Ctrl instead of ⌘. There is no menu bar there
-yet, so ⌘ N is macOS only.
+On Linux and Windows, use Ctrl instead of ⌘. There is no menu bar there:
+the collection menu at the top of the sidebar has New, Open and Import.
 
 ## File format
 
