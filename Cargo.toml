@@ -39,4 +39,5 @@ url = "2.5.8"
 tempfile = "3.27.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-muda = "0.21.2"
+# Only the macOS menu bar; its default `gtk3` feature is the Linux backend.
+muda = { version = "0.21.2", default-features = false }
