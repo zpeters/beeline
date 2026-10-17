@@ -7,7 +7,7 @@
 - No export yet.
 - An import lands in a new folder inside the current collection. Nothing is
   overwritten.
-- "Import from API docs" stays in TODO for later.
+- "Import from API docs" stays for later (GitHub issue #5).
 
 ## Builder's calls
 
