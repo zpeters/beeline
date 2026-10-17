@@ -12,7 +12,10 @@ supply `{{vars}}`. The current scope is in
 Request tabs (several open requests, one tab each) are in scope; see
 `docs/superpowers/specs/2026-10-16-request-tabs-design.md`.
 
-Out of scope for now: request history, scripting, assertions,
+Request history is session-only (the last sends of each tab, in memory);
+history saved to disk is not in scope.
+
+Out of scope for now: scripting, assertions,
 cookies, GraphQL, websockets, file uploads, a plugin system, and any
 cloud sync. Do not build them speculatively. Future ideas live in
 GitHub Issues: https://github.com/zpeters/beeline/issues.
@@ -28,6 +31,8 @@ Pure modules (no I/O, unit-tested):
 - `format.rs` — response display helpers (pretty JSON, sizes, times).
 - `curl.rs` — a resolved request as a shell-safe `curl` command.
 - `spark.rs` — session-only response-time series for sidebar sparklines.
+- `history.rs` — a capped, numbered list of a tab's sends (session only).
+- `highlight.rs` — splits one line of JSON into tokens for syntax colours.
 - `recents.rs` — the recent-collections list.
 - `settings.rs` — the settings file format and its limits.
 
@@ -49,7 +54,8 @@ UI (iced 0.14, Elm-style: `update` returns a `Task`, `view` builds
   send `menu::Command`s to `App::update`. No Edit menu: its ⌘C/⌘V items
   would take those keys from iced's text fields. On macOS the bar owns ⌘S
   and ⌘W, so the in-window shortcut handler skips them.
-- `ui/editor.rs`, `ui/response.rs`, `ui/sidebar.rs`, `ui/tab_strip.rs`,
+- `ui/editor.rs`, `ui/response.rs`, `ui/highlight.rs` (iced Highlighter
+  over `highlight.rs`), `ui/sidebar.rs`, `ui/tab_strip.rs`,
   `ui/dialog.rs`, `ui/theme.rs`, `ui/mod.rs` (shared key/value table).
   Widgets edit the state they are handed or return messages; they do no
   I/O.

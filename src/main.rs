@@ -4,6 +4,8 @@ mod app;
 mod collection;
 mod curl;
 mod format;
+mod highlight;
+mod history;
 mod http;
 mod import;
 mod menu;

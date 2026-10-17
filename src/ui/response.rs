@@ -1,17 +1,19 @@
-//! The response viewer: status line, Body and Headers tabs.
+//! The response viewer: status line, Body, Headers and History tabs.
 
-use iced::widget::{column, row, rule, scrollable, space, text, text_editor};
-use iced::{Color, Element, Fill};
+use iced::widget::{button, column, row, rule, scrollable, space, text, text_editor};
+use iced::{Color, Element, Fill, Theme};
 
 use crate::format;
+use crate::history::History;
 use crate::http;
-use crate::ui::theme;
+use crate::ui::{highlight, theme};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Tab {
     #[default]
     Body,
     Headers,
+    History,
 }
 
 #[derive(Debug, Clone)]
@@ -20,6 +22,18 @@ pub enum Msg {
     /// Selection and movement only; edits are ignored, the body is read-only.
     Edit(text_editor::Action),
     Copy,
+    /// Show this earlier send from the history. Left to `App`, which owns
+    /// the history.
+    Show(u64),
+}
+
+/// One send, as the history keeps it: what went on the wire and what
+/// came back.
+#[derive(Debug, Clone)]
+pub struct Sent {
+    pub method: String,
+    pub url: String,
+    pub result: Result<http::Response, String>,
 }
 
 /// A response plus its display text, computed once when it arrives
@@ -67,7 +81,7 @@ pub fn update(view: &mut View, msg: Msg) {
                 view.content.perform(action);
             }
         }
-        Msg::Copy => {}
+        Msg::Copy | Msg::Show(_) => {}
     }
 }
 
@@ -79,7 +93,13 @@ fn status_color(status: u16) -> Color {
     }
 }
 
-pub fn view(view: &View) -> Element<'_, Msg> {
+/// `shown` is the history number of the send on screen; an earlier one
+/// than the newest gets a note in the status line.
+pub fn view<'a>(
+    view: &'a View,
+    history: &'a History<Sent>,
+    shown: Option<u64>,
+) -> Element<'a, Msg> {
     let resp = &view.resp;
     let mut info = row![
         text(format!("{} {}", resp.status, resp.reason))
@@ -92,6 +112,15 @@ pub fn view(view: &View) -> Element<'_, Msg> {
     if view.is_json {
         info = info.push(text("JSON").size(theme::small_px()));
     }
+    if let Some(n) = shown
+        && history.latest() != Some(n)
+    {
+        info = info.push(
+            text(format!("Send #{n}, not the newest"))
+                .size(theme::small_px())
+                .style(text::warning),
+        );
+    }
     info = info
         .push(space::horizontal().width(Fill))
         .push(theme::button(text("Copy body").size(theme::small_px())).on_press(Msg::Copy));
@@ -102,6 +131,11 @@ pub fn view(view: &View) -> Element<'_, Msg> {
             view.tab,
             Tab::Headers,
             format!("Headers ({})", resp.headers.len())
+        ),
+        tab_button(
+            view.tab,
+            Tab::History,
+            format!("History ({})", history.len())
         ),
     ]
     .spacing(16);
@@ -123,7 +157,8 @@ pub fn view(view: &View) -> Element<'_, Msg> {
                     .style(theme::editor)
                     .font(theme::mono())
                     .on_action(Msg::Edit)
-                    .height(Fill),
+                    .height(Fill)
+                    .highlight_with::<highlight::Json>(view.is_json, highlight::format),
             )
             .height(Fill)
             .into()
@@ -141,6 +176,7 @@ pub fn view(view: &View) -> Element<'_, Msg> {
             }
             scrollable(rows).height(Fill).into()
         }
+        Tab::History => history_list(history, shown),
     };
 
     column![info, column![tabs, rule::horizontal(1)], body]
@@ -151,4 +187,55 @@ pub fn view(view: &View) -> Element<'_, Msg> {
 
 fn tab_button<'a>(current: Tab, this: Tab, label: String) -> Element<'a, Msg> {
     theme::tab(current, this, label, Msg::Tab(this))
+}
+
+/// This session's sends of the request, newest first. A click on one
+/// shows it.
+pub fn history_list(history: &History<Sent>, shown: Option<u64>) -> Element<'_, Msg> {
+    let mut rows = column![].spacing(2);
+    for (n, sent) in history.newest_first() {
+        let (status, color, detail) = match &sent.result {
+            Ok(resp) => (
+                format!("{} {}", resp.status, resp.reason),
+                Some(status_color(resp.status)),
+                format!(
+                    "{} · {}",
+                    format::duration(resp.elapsed),
+                    format::size(resp.body.len())
+                ),
+            ),
+            Err(e) => ("Error".to_string(), None, e.clone()),
+        };
+        let mut status = text(status).size(theme::small_px()).width(120);
+        status = match color {
+            Some(c) => status.color(c),
+            None => status.style(text::danger),
+        };
+        let line = row![
+            text(format!("#{n}")).size(theme::small_px()).width(40),
+            status,
+            text(detail).size(theme::small_px()).width(160),
+            text(format!("{} {}", sent.method, sent.url))
+                .size(theme::small_px())
+                .font(theme::mono())
+                .wrapping(text::Wrapping::None)
+                .width(Fill),
+        ]
+        .spacing(12);
+        let selected = shown == Some(n);
+        rows = rows.push(
+            button(line)
+                .style(move |theme: &Theme, status| {
+                    let mut s = theme::text_button(theme, status);
+                    if selected {
+                        s.background =
+                            Some(theme.extended_palette().background.strong.color.into());
+                    }
+                    s
+                })
+                .width(Fill)
+                .on_press(Msg::Show(n)),
+        );
+    }
+    scrollable(rows).height(Fill).into()
 }

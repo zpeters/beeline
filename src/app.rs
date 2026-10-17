@@ -15,6 +15,7 @@ use iced::{Element, Fill, FillPortion, Point, Subscription, Task, Theme, event, 
 use serde::{Deserialize, Serialize};
 
 use crate::collection::{self, Node};
+use crate::history::History;
 use crate::menu;
 use crate::model::{Environment, KeyValue, RequestFile};
 use crate::recents;
@@ -146,7 +147,14 @@ struct Doc {
     pending: bool,
     /// Bumped on each load, so a late response for an old request is dropped.
     generation: u64,
+    /// What the response pane shows: the newest send, or one picked from
+    /// the history.
     result: Option<Result<response::View, String>>,
+    /// This tab's sends, for this session only. Requests that fail to
+    /// resolve, or are cancelled, never went out and are not kept.
+    history: History<response::Sent>,
+    /// The history number of the send `result` shows.
+    shown: Option<u64>,
 }
 
 impl Doc {
@@ -161,6 +169,8 @@ impl Doc {
             pending: false,
             generation: 0,
             result: None,
+            history: History::default(),
+            shown: None,
         }
     }
 
@@ -287,7 +297,7 @@ pub enum Message {
     /// Show the active request, resolved with the current environment, as
     /// a curl command, ready to copy.
     ShowCurl,
-    Sent(u64, u64, Result<http::Response, String>),
+    Sent(u64, u64, response::Sent),
     CloseRequested(window::Id),
     CursorMoved(Point),
     MouseReleased,
@@ -1071,6 +1081,7 @@ impl App {
         doc.pending = true;
         doc.result = None;
         let (id, generation) = (doc.id, doc.generation);
+        let (method, url) = (resolved.method.clone(), resolved.url.clone());
         // A plain thread keeps the blocking HTTP call off the UI executor.
         // The oneshot channel works with any executor.
         let (tx, rx) = iced::futures::channel::oneshot::channel();
@@ -1082,7 +1093,17 @@ impl App {
                 rx.await
                     .unwrap_or_else(|_| Err("request thread stopped".into()))
             },
-            move |res| Message::Sent(id, generation, res),
+            move |result| {
+                Message::Sent(
+                    id,
+                    generation,
+                    response::Sent {
+                        method,
+                        url,
+                        result,
+                    },
+                )
+            },
         )
     }
 
@@ -1151,14 +1172,14 @@ impl App {
                 Some(id) if self.modal.is_none() => self.close_tab(id),
                 _ => Task::none(),
             },
-            Message::Sent(id, generation, res) => {
+            Message::Sent(id, generation, sent) => {
                 // A tab closed or cancelled since the send drops its response.
                 if let Some(doc) = self.docs.iter_mut().find(|d| d.id == id)
                     && doc.generation == generation
                 {
                     // A response with a status adds a point to the request's
                     // sparkline. A transport error has no time to show.
-                    if let (Ok(resp), Some(path)) = (&res, &doc.open) {
+                    if let (Ok(resp), Some(path)) = (&sent.result, &doc.open) {
                         self.sparks
                             .entry(path.clone())
                             .or_default()
@@ -1169,7 +1190,8 @@ impl App {
                         self.arrived.insert(path.clone(), Instant::now());
                     }
                     doc.pending = false;
-                    doc.result = Some(res.map(response::View::new));
+                    doc.result = Some(sent.result.clone().map(response::View::new));
+                    doc.shown = Some(doc.history.push(sent));
                 }
                 Task::none()
             }
@@ -1362,6 +1384,13 @@ impl App {
                     }
                     None => Task::none(),
                 }
+            }
+            response::Msg::Show(n) => {
+                if let Some(sent) = doc.history.get(n) {
+                    doc.result = Some(sent.result.clone().map(response::View::new));
+                    doc.shown = Some(n);
+                }
+                Task::none()
             }
             other => {
                 if let Some(Ok(view)) = &mut doc.result {
@@ -1770,7 +1799,17 @@ impl App {
             text("Sending…").size(theme::text_px()).into()
         } else {
             match &doc.result {
-                Some(Ok(view)) => response::view(view).map(Message::Response),
+                Some(Ok(view)) => {
+                    response::view(view, &doc.history, doc.shown).map(Message::Response)
+                }
+                // An error has no tabs; earlier sends are listed below it.
+                Some(Err(err)) if !doc.history.is_empty() => column![
+                    text(err.as_str()).style(text::danger),
+                    text(format!("History ({})", doc.history.len())).size(theme::small_px()),
+                    response::history_list(&doc.history, doc.shown).map(Message::Response),
+                ]
+                .spacing(8)
+                .into(),
                 Some(Err(err)) => text(err.as_str()).style(text::danger).into(),
                 None => text("Send a request to see the response here. Cmd+Enter sends.").into(),
             }
