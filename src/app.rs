@@ -195,6 +195,8 @@ enum Modal {
         error: Option<String>,
     },
     Delete(PathBuf),
+    /// The curl preview: the exact command for the active request.
+    Curl(String),
     /// The curl paste dialog. Its text lives in `App::curl_paste`.
     ImportCurl {
         error: Option<String>,
@@ -282,9 +284,9 @@ pub enum Message {
     CloseTab,
     Send,
     Save,
-    /// Copy the active request, resolved with the current environment, as
-    /// a curl command.
-    CopyCurl,
+    /// Show the active request, resolved with the current environment, as
+    /// a curl command, ready to copy.
+    ShowCurl,
     Sent(u64, u64, Result<http::Response, String>),
     CloseRequested(window::Id),
     CursorMoved(Point),
@@ -1097,17 +1099,16 @@ impl App {
             Message::Response(msg) => self.response_msg(msg),
             Message::Dialog(msg) => self.dialog_msg(msg),
             Message::Send => self.send(),
-            Message::CopyCurl => match self.doc().map(|d| resolve::resolve(&d.req, &self.vars)) {
-                Some(Ok(resolved)) => {
-                    self.notify("Copied as cURL", false);
-                    iced::clipboard::write(curl::command(&resolved))
+            Message::ShowCurl => {
+                match self.doc().map(|d| resolve::resolve(&d.req, &self.vars)) {
+                    Some(Ok(resolved)) => {
+                        self.modal = Some(Modal::Curl(curl::command(&resolved)));
+                    }
+                    Some(Err(e)) => self.notify(e, true),
+                    None => {}
                 }
-                Some(Err(e)) => {
-                    self.notify(e, true);
-                    Task::none()
-                }
-                None => Task::none(),
-            },
+                Task::none()
+            }
             Message::Save => {
                 if self.modal.is_none() {
                     self.save();
@@ -1503,6 +1504,13 @@ impl App {
                 }
                 Task::none()
             }
+            dialog::Msg::CurlCopy => {
+                let Some(Modal::Curl(command)) = self.modal.take() else {
+                    return Task::none();
+                };
+                self.notify("Copied as cURL", false);
+                iced::clipboard::write(command)
+            }
             dialog::Msg::CurlImport => {
                 self.import_curl();
                 Task::none()
@@ -1738,7 +1746,7 @@ impl App {
                 text("")
             },
             space::horizontal().width(Fill),
-            theme::button(text("Copy cURL").size(theme::text_px())).on_press(Message::CopyCurl),
+            theme::button(text("cURL…").size(theme::text_px())).on_press(Message::ShowCurl),
             theme::button(text("Save").size(theme::text_px()))
                 .on_press_maybe(dirty.then_some(Message::Save)),
         ]
@@ -2029,6 +2037,7 @@ impl App {
                 timeout,
                 error,
             } => dialog::settings(draft, timeout, error.as_deref()).map(Message::Dialog),
+            Modal::Curl(command) => dialog::curl_preview(command).map(Message::Dialog),
             Modal::ImportCurl { error } => {
                 dialog::import_curl(&self.curl_paste, error.as_deref()).map(Message::Dialog)
             }

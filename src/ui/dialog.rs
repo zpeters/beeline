@@ -34,6 +34,7 @@ pub enum Msg {
     SettingsCollectionsDir(String),
     SettingsSave,
     CurlEdit(text_editor::Action),
+    CurlCopy,
     CurlImport,
 }
 
@@ -134,6 +135,40 @@ pub fn name<'a>(heading: &'static str, value: &'a str, error: Option<&'a str>) -
         .spacing(8),
     );
     overlay(col.into())
+}
+
+/// The active request as a curl command, as it would be sent: variables
+/// filled in, auth and content-type headers added. Copy puts it on the
+/// clipboard and closes the dialog.
+pub fn curl_preview(command: &str) -> Element<'_, Msg> {
+    overlay(
+        column![
+            text("cURL").size(theme::heading_px()),
+            text("Exactly what Send would send, with the current environment.")
+                .size(theme::small_px())
+                .style(theme::muted),
+            container(
+                scrollable(
+                    text(command)
+                        .font(theme::mono())
+                        .size(theme::small_px())
+                        .wrapping(iced::widget::text::Wrapping::WordOrGlyph),
+                )
+                .height(Length::Shrink),
+            )
+            .padding(10)
+            .max_height(320)
+            .width(Fill)
+            .style(theme::card),
+            row![
+                theme::button("Copy").on_press(Msg::CurlCopy),
+                theme::button("Close").on_press(Msg::Cancel),
+            ]
+            .spacing(8),
+        ]
+        .spacing(12)
+        .into(),
+    )
 }
 
 /// Paste a curl command; Import turns it into a request.

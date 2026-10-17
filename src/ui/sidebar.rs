@@ -265,7 +265,8 @@ fn request_row<'a>(
             .font(theme::mono())
             .size(theme::small_px())
             .style(theme::muted)
-            .width(46),
+            // Wide enough for the longest method, OPTIONS.
+            .width(62),
         text(name.to_string()).size(theme::text_px()).width(Fill),
     ]
     .spacing(4)
