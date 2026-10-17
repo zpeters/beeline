@@ -48,10 +48,12 @@ dmg: bundle-mac
         -srcfolder target/release/bundle/dmg-stage dist/beeline-{{version}}.dmg
     @echo "dist/beeline-{{version}}.dmg"
 
-# Render the app icon PNGs and the README banner from their SVG sources.
+# Render the app icon PNGs, the README banner and the GitHub social
+# preview from their SVG sources.
 # The banner's wordmark needs the Futura font (it ships with macOS).
 icons:
     resvg -w 1800 assets/logo/banner.svg assets/logo/banner.png
+    resvg -w 1280 -h 640 assets/logo/social.svg assets/logo/social.png
     resvg -w 32 -h 32 assets/icon/icon.svg assets/icon/32x32.png
     resvg -w 64 -h 64 assets/icon/icon.svg assets/icon/32x32@2x.png
     resvg -w 128 -h 128 assets/icon/icon.svg assets/icon/128x128.png
