@@ -93,6 +93,23 @@ just install-mac  # copy beeline.app into /Applications
 just dmg          # build dist/beeline-<version>.dmg (drag-to-Applications)
 ```
 
+## Releases
+
+`.github/workflows/release.yml` makes them. Pushing a `v<version>` tag
+builds `beeline-<version>-macos-arm64.dmg` and
+`beeline-<version>-linux-x86_64.tar.gz` and opens a **draft** GitHub
+release with both attached. The tag must match `Cargo.toml`.
+
+1. Bump `version` in `Cargo.toml` (it also changes `Cargo.lock`) and
+   merge it to `main`.
+2. `jj tag set v<version> -r main`, then `git push github v<version>`
+   (and to `origin`).
+3. On GitHub, edit the draft's notes and publish it.
+
+If the release already exists (made by hand on GitHub), the files are
+uploaded to it instead. To build for an existing tag, use "Run workflow"
+on the Release workflow in the Actions tab and give it the tag.
+
 ## Version control
 
 `jj` (Jujutsu), colocated with git — use `jj`, not `git commit`. `git`
