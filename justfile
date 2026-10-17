@@ -23,11 +23,14 @@ check:
     cargo clippy -- -D warnings
     cargo test
 
-# Build beeline.app (macOS) into target/release/bundle/osx/.
+# Build beeline.app (macOS) into target/release/bundle/osx/ and sign it
+# ad-hoc. Without a bundle signature, some Macs call the app "damaged".
+# This does not notarise it: downloads still get the Gatekeeper warning.
 bundle-mac:
-    # Leftovers from an older bundle can stop cargo-bundle making the .dmg.
     rm -rf target/release/bundle
-    cargo bundle --release
+    cargo bundle --release --format osx
+    codesign --force --sign - target/release/bundle/osx/beeline.app
+    codesign --verify --strict target/release/bundle/osx/beeline.app
 
 # Build beeline.app and copy it into /Applications, replacing any older copy.
 install-mac: bundle-mac
@@ -37,8 +40,12 @@ install-mac: bundle-mac
 # Build a drag-to-install disk image (beeline.app + an Applications link)
 # at dist/beeline-<version>.dmg.
 dmg: bundle-mac
-    mkdir -p dist
-    cp target/release/bundle/dmg/beeline.dmg dist/beeline-{{version}}.dmg
+    rm -rf target/release/bundle/dmg-stage
+    mkdir -p target/release/bundle/dmg-stage dist
+    cp -R target/release/bundle/osx/beeline.app target/release/bundle/dmg-stage/
+    ln -s /Applications target/release/bundle/dmg-stage/Applications
+    hdiutil create -quiet -ov -volname beeline -fs HFS+ -format UDZO \
+        -srcfolder target/release/bundle/dmg-stage dist/beeline-{{version}}.dmg
     @echo "dist/beeline-{{version}}.dmg"
 
 # Render the app icon PNGs and the README banner from their SVG sources.
