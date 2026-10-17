@@ -2,8 +2,12 @@
 //! clicks (and their shortcuts) into [`Command`]s for `App::update`.
 //! Other platforms get no menu bar; the in-app controls cover everything.
 //!
-//! There is no Edit menu yet: its standard Cut/Copy/Paste items would take
-//! ⌘X/⌘C/⌘V before iced's text fields see them.
+//! There is no Edit menu, on purpose. muda's standard Edit items take ⌘A,
+//! ⌘C and ⌘V as menu shortcuts and send them as AppKit actions (`copy:`,
+//! `paste:`) to winit's view, which ignores them, so iced's text fields
+//! never see the keys. Tried and confirmed by hand: with the Edit menu,
+//! select all, copy and paste stop working; without it, they work. A real
+//! Edit menu needs its items wired to iced's focused field instead.
 
 use iced::Subscription;
 

@@ -21,3 +21,7 @@
   importing Insomnia and HAR.
 
 - github
+
+- **Edit menu on macOS.** The standard one breaks ⌘A/⌘C/⌘V in text fields
+  (see `src/menu.rs`). Needs custom Edit items that act on iced's focused
+  field, without taking the keys from it.
