@@ -18,6 +18,8 @@
             pkgs.just
             # Builds beeline.app from [package.metadata.bundle] (just bundle-mac).
             pkgs.cargo-bundle
+            # Renders assets/icon/icon.svg and assets/logo/banner.svg (just icons).
+            pkgs.resvg
           ];
         };
       }

@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="900" height="300" viewBox="0 0 300 100">
+<!-- beeline README banner. Wordmark set in Futura; banner.png is the rendered copy the README uses. -->
+<defs>
+    <linearGradient id="v2steel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fdfeff"/><stop offset=".3" stop-color="#c0c8cf"/><stop offset=".52" stop-color="#f1f4f6"/><stop offset=".8" stop-color="#9aa4ad"/><stop offset="1" stop-color="#6c7680"/>
+    </linearGradient>
+    <linearGradient id="v2steelH" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6c7680"/><stop offset=".28" stop-color="#eef1f4"/><stop offset=".45" stop-color="#b9c1c9"/><stop offset=".68" stop-color="#fbfcfd"/><stop offset="1" stop-color="#66707a"/>
+    </linearGradient>
+    <linearGradient id="v2dark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9ea7af"/><stop offset="1" stop-color="#4d565f"/>
+    </linearGradient>
+    <clipPath id="v2sq"><rect x="4" y="4" width="92" height="92" rx="21"/></clipPath>
+    <clipPath id="v2body"><path d="M8 44 H60 Q88 44 93 62 Q92 68 86 68 H8 Z"/></clipPath>
+    <clipPath id="v2dome"><path d="M22 80 V52 Q22 22 50 20 Q78 22 78 52 V80 Z"/></clipPath>
+
+    <g id="v2bee">
+      <ellipse cx="-2.6" cy="-1.6" rx="2.4" ry="1.4" transform="rotate(-30 -2.6 -1.6)" fill="#f6e7b9"/>
+      <ellipse cx="2.6" cy="-1.6" rx="2.4" ry="1.4" transform="rotate(30 2.6 -1.6)" fill="#f6e7b9"/>
+      <circle cx="0" cy="-3.6" r="1.3" fill="#d9a83a"/>
+      <ellipse cx="0" cy="0.6" rx="2.2" ry="3.4" fill="#d9a83a"/>
+      <g stroke="#1d2a44" stroke-width=".7"><line x1="-2.3" y1="0" x2="2.3" y2="0"/><line x1="-2" y1="2" x2="2" y2="2"/></g>
+    </g>
+
+    <g id="v2wheel">
+      <circle r="7.5" fill="#d3d9de" stroke="#30373e" stroke-width="1.4"/>
+      <g stroke="#59626b" stroke-width=".7"><line x1="-6.5" y1="0" x2="6.5" y2="0"/><line x1="0" y1="-6.5" x2="0" y2="6.5"/><line x1="-4.6" y1="-4.6" x2="4.6" y2="4.6"/><line x1="-4.6" y1="4.6" x2="4.6" y2="-4.6"/></g>
+      <circle r="2" fill="#30373e"/>
+    </g>
+
+    <!-- the side-view engine, no background -->
+    <g id="v2train">
+      <g fill="#e6eaee" opacity=".55">
+        <path d="M60 44 Q55 37 44 36 H-10 V39.5 H43 Q53 40 60 44 Z"/>
+        <path d="M57 44 Q50 41.5 40 41.5 H-10 V43.6 H40 Q50 43.6 57 44 Z" opacity=".7"/>
+      </g>
+      <use href="#v2wheel" transform="translate(30 72)"/><use href="#v2wheel" transform="translate(45.5 72)"/><use href="#v2wheel" transform="translate(61 72)"/>
+      <g fill="#d3d9de" stroke="#30373e" stroke-width="1.2"><circle cx="80" cy="75.5" r="3.6"/><circle cx="14" cy="75.5" r="3.6"/></g>
+      <path d="M7 33 H28 V44 H8 Z" fill="url(#v2steel)"/>
+      <rect x="6" y="32" width="23" height="2" rx="1" fill="#59626b"/>
+      <rect x="10.5" y="36" width="6" height="5" rx="1" fill="#1b2633"/><rect x="19" y="36" width="6" height="5" rx="1" fill="#1b2633"/>
+      <path d="M8 44 H60 Q88 44 93 62 Q92 68 86 68 H8 Z" fill="url(#v2steel)"/>
+      <g clip-path="url(#v2body)" stroke-width=".55">
+        <line x1="8" y1="49" x2="100" y2="49" stroke="#fff"/><line x1="8" y1="49.8" x2="100" y2="49.8" stroke="#6c7680"/>
+        <line x1="8" y1="51.6" x2="100" y2="51.6" stroke="#fff"/><line x1="8" y1="52.4" x2="100" y2="52.4" stroke="#6c7680"/>
+      </g>
+      <path d="M58 44.3 Q84 45 91.5 58" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      <path d="M58 45.6 Q83 46.5 90.6 59" stroke="#7d8790" stroke-width=".6" fill="none"/>
+      <circle cx="91" cy="57.5" r="1.7" fill="#fff4c2"/>
+      <path d="M8 62 H90.5 Q89.5 66.5 86 68 H8 Z" fill="url(#v2dark)"/>
+      <rect x="66" y="65" width="11" height="6" rx="2" fill="url(#v2dark)" stroke="#30373e" stroke-width=".6"/>
+      <g stroke="#262c32" stroke-width="1.8" stroke-linecap="round"><line x1="30" y1="74.5" x2="61" y2="74.5"/><line x1="61" y1="74.5" x2="70" y2="68.5"/></g>
+      <circle cx="42" cy="56.5" r="7" fill="#1d2a44" stroke="#d9a83a" stroke-width="1.4"/>
+      <use href="#v2bee" transform="translate(42 57) scale(1.05)"/>
+    </g>
+
+    <g id="v2rays">
+      <path d="M0 0 L-150 -7 L-150 7 Z"/><path d="M0 0 L-150 -7 L-150 7 Z" transform="rotate(20)"/><path d="M0 0 L-150 -7 L-150 7 Z" transform="rotate(40)"/><path d="M0 0 L-150 -7 L-150 7 Z" transform="rotate(60)"/><path d="M0 0 L-150 -7 L-150 7 Z" transform="rotate(80)"/><path d="M0 0 L-150 -7 L-150 7 Z" transform="rotate(100)"/><path d="M0 0 L-150 -7 L-150 7 Z" transform="rotate(-20)"/><path d="M0 0 L-150 -7 L-150 7 Z" transform="rotate(-40)"/><path d="M0 0 L-150 -7 L-150 7 Z" transform="rotate(120)"/><path d="M0 0 L-150 -7 L-150 7 Z" transform="rotate(140)"/><path d="M0 0 L-150 -7 L-150 7 Z" transform="rotate(160)"/><path d="M0 0 L-150 -7 L-150 7 Z" transform="rotate(180)"/>
+    </g>
+
+    <symbol id="v2a" viewBox="0 0 100 100">
+      <rect x="4" y="4" width="92" height="92" rx="21" fill="#1a2540"/>
+      <g clip-path="url(#v2sq)">
+        <use href="#v2rays" transform="translate(93 58)" fill="#d9a83a" opacity=".12"/>
+        <use href="#v2train"/>
+        <rect x="0" y="80" width="100" height="2.4" fill="#d9a83a"/>
+        <g fill="#d9a83a" opacity=".5"><rect x="0" y="84" width="100" height=".8"/></g>
+      </g>
+    </symbol>
+
+    <symbol id="v2b" viewBox="0 0 100 100">
+      <rect x="4" y="4" width="92" height="92" rx="21" fill="#151a26"/>
+      <g clip-path="url(#v2sq)">
+        <use href="#v2rays" transform="translate(50 30)" fill="#d9a83a" opacity=".14"/>
+        <g stroke="#d9a83a" stroke-width="2.2" stroke-linecap="round"><line x1="40" y1="80" x2="26" y2="100"/><line x1="60" y1="80" x2="74" y2="100"/></g>
+        <path d="M22 80 V52 Q22 22 50 20 Q78 22 78 52 V80 Z" fill="url(#v2steelH)"/>
+        <g clip-path="url(#v2dome)" stroke-width=".6">
+          <line x1="0" y1="44" x2="41" y2="44" stroke="#fff"/><line x1="0" y1="44.8" x2="41" y2="44.8" stroke="#6c7680"/>
+          <line x1="59" y1="44" x2="100" y2="44" stroke="#fff"/><line x1="59" y1="44.8" x2="100" y2="44.8" stroke="#6c7680"/>
+          <rect x="0" y="70" width="100" height="10" fill="url(#v2dark)"/>
+          <g fill="#30373e"><rect x="22" y="72.5" width="56" height="1.2"/><rect x="22" y="75.5" width="56" height="1.2"/></g>
+        </g>
+        <path d="M46.5 22.5 Q50 19.5 53.5 22.5 V48 H46.5 Z" fill="url(#v2steelH)" stroke="#7d8790" stroke-width=".5"/>
+        <circle cx="50" cy="30" r="3.4" fill="#fff4c2" stroke="#59626b" stroke-width=".8"/>
+        <circle cx="50" cy="57" r="10" fill="#1d2a44" stroke="#d9a83a" stroke-width="1.8"/>
+        <use href="#v2bee" transform="translate(50 57.5) scale(1.55)"/>
+      </g>
+    </symbol>
+
+    <symbol id="v2c" viewBox="0 0 100 100">
+      <rect x="4" y="4" width="92" height="92" rx="21" fill="#f1e7cf"/>
+      <g clip-path="url(#v2sq)">
+        <g fill="#d9a83a" opacity=".55">
+          <rect x="-10" y="26" width="46" height="1.6" transform="rotate(-14 50 50)"/>
+          <rect x="-10" y="31" width="34" height="1.6" transform="rotate(-14 50 50)"/>
+          <rect x="-10" y="36" width="40" height="1.6" transform="rotate(-14 50 50)"/>
+        </g>
+        <g transform="rotate(-14 50 56) translate(2 -2)">
+          <use href="#v2train"/>
+          <rect x="-20" y="80" width="140" height="2.6" fill="#1a2540"/>
+        </g>
+      </g>
+    </symbol>
+  
+    <clipPath id="f-sq"><rect x="4" y="4" width="92" height="92" rx="21"/></clipPath>
+    <clipPath id="f-wide"><rect x="0" y="0" width="300" height="100" rx="14"/></clipPath>
+
+    <!-- the bee, refined for large sizes; centred on 0,0, about 12 units tall -->
+    <g id="f-bee">
+      <g stroke="#d9a83a" stroke-width=".55" fill="none" stroke-linecap="round"><path d="M-.6 -4.6 Q-1.4 -6.4 -2.6 -6.9"/><path d="M.6 -4.6 Q1.4 -6.4 2.6 -6.9"/></g>
+      <path d="M-.4 -2.4 C-3 -5.4 -6.6 -4.6 -6.2 -2.4 C-5.8 -.6 -2.6 -.6 -.4 -1.6 Z" fill="#f6e7b9"/>
+      <path d="M.4 -2.4 C3 -5.4 6.6 -4.6 6.2 -2.4 C5.8 -.6 2.6 -.6 .4 -1.6 Z" fill="#f6e7b9"/>
+      <circle cx="0" cy="-3.7" r="1.35" fill="#d9a83a"/>
+      <path d="M0 -2.3 C2.5 -2.3 2.7 1.6 0 5.4 C-2.7 1.6 -2.5 -2.3 0 -2.3 Z" fill="#d9a83a"/>
+      <g stroke="#1d2a44" stroke-width=".75"><line x1="-2.3" y1="0" x2="2.3" y2="0"/><line x1="-1.8" y1="2.2" x2="1.8" y2="2.2"/></g>
+    </g>
+
+    <g id="f-badge">
+      <circle r="30" fill="#1d2a44" stroke="#d9a83a" stroke-width="4"/>
+      <circle r="24.5" fill="none" stroke="#d9a83a" stroke-width=".9" opacity=".7"/>
+      <use href="#f-bee" transform="translate(0 .8) scale(3.3)"/>
+    </g>
+
+    <symbol id="f-icon-steel" viewBox="0 0 100 100">
+      <rect x="4" y="4" width="92" height="92" rx="21" fill="url(#v2steel)"/>
+      <g clip-path="url(#f-sq)" stroke-width=".8">
+        <line x1="0" y1="14" x2="100" y2="14" stroke="#fff"/><line x1="0" y1="15.2" x2="100" y2="15.2" stroke="#6c7680"/>
+        <line x1="0" y1="85" x2="100" y2="85" stroke="#fff"/><line x1="0" y1="86.2" x2="100" y2="86.2" stroke="#6c7680"/>
+      </g>
+      <use href="#f-badge" transform="translate(50 50) scale(1.15)"/>
+    </symbol>
+
+    <symbol id="f-icon-navy" viewBox="0 0 100 100">
+      <rect x="4" y="4" width="92" height="92" rx="21" fill="#1a2540"/>
+      <g clip-path="url(#f-sq)"><use href="#v2rays" transform="translate(50 50)" fill="#d9a83a" opacity=".1"/></g>
+      <use href="#f-badge" transform="translate(50 50) scale(1.15)"/>
+    </symbol>
+
+    <symbol id="f-banner" viewBox="0 0 300 100">
+      <rect width="300" height="100" rx="14" fill="#1a2540"/>
+      <g clip-path="url(#f-wide)">
+        <use href="#v2rays" transform="translate(96 54) scale(1.6)" fill="#d9a83a" opacity=".1"/>
+        <g transform="translate(8 2) scale(.95)"><use href="#v2train"/></g>
+        <rect x="0" y="78" width="300" height="2.4" fill="#d9a83a"/>
+        <rect x="0" y="82" width="300" height=".8" fill="#d9a83a" opacity=".5"/>
+        <text x="112" y="56" font-family="Futura, 'Futura PT', 'Josefin Sans', sans-serif" font-weight="500" font-size="36" letter-spacing="1.5" fill="#f1f4f6">beeline</text>
+        <text x="113.5" y="70" font-family="Futura, 'Futura PT', 'Josefin Sans', sans-serif" font-size="6.4" letter-spacing="1.9" fill="#d9a83a">A MINIMAL DESKTOP API CLIENT</text>
+      </g>
+    </symbol>
+</defs>
+<use href="#f-banner" width="300" height="100"/>
+</svg>
