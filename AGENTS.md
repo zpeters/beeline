@@ -15,7 +15,7 @@ Request tabs (several open requests, one tab each) are in scope; see
 Out of scope for now: request history, scripting, assertions,
 cookies, GraphQL, websockets, file uploads, a plugin system, and any
 cloud sync. Do not build them speculatively. Future ideas live in
-`TODO.md`.
+GitHub Issues: https://github.com/zpeters/beeline/issues.
 
 ## Stack and layout
 
