@@ -15,7 +15,7 @@ hand-edit them and keep them in git next to your code. There is no account,
 no cloud sync and no telemetry.
 
 <p align="center">
-  <img src="assets/screenshots/main.png" alt="beeline with a request open and a JSON response" width="820">
+  <img src="assets/screenshots/main.png" alt="beeline with a request open and a colour-highlighted JSON response" width="820">
 </p>
 
 ## Features
@@ -29,7 +29,10 @@ no cloud sync and no telemetry.
 - **Environments.** Put `environments/<name>.json` in the collection,
   pick one in the sidebar, and use `{{name}}` anywhere in a request.
 - **Response viewer.** Status, time, size, pretty-printed JSON (keys stay
-  in server order) and headers.
+  in server order) with syntax colours, and headers. JSON request bodies
+  are coloured too.
+- **History.** Each request tab keeps its last 20 sends for the session;
+  pick one to see that response again.
 - **Import** from a cURL command, an OpenAPI 3 or Postman v2.1 file, or a
   Bruno folder.
 - **Copy as cURL.** See the exact command for a request and copy it.
