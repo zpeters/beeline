@@ -1,0 +1,124 @@
+name: Release
+
+# Pushing a tag such as v0.2.0 builds the macOS disk image and a Linux
+# archive, then opens a draft GitHub release with both attached. Edit the
+# notes and publish it by hand. If a release for the tag already exists,
+# the files are uploaded to it instead (replacing any with the same name).
+#
+# "Run workflow" on the Actions tab does the same for a tag that already
+# exists. A pull request that changes this file runs the build jobs only,
+# so the workflow can be tested before a tag needs it.
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: [".github/workflows/release.yml"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "An existing tag to build and release, such as v0.2.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # The tag being released; empty on a pull request.
+  TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name || '') }}
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - id: v
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # A tag must match Cargo.toml, so the files carry the right number.
+          if [ -n "$TAG" ] && [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match Cargo.toml version $version"
+            exit 1
+          fi
+
+  macos:
+    needs: version
+    # Apple Silicon. Intel Macs are not built.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-bundle
+      - run: just dmg
+      - run: mv dist/beeline-${{ needs.version.outputs.version }}.dmg dist/beeline-${{ needs.version.outputs.version }}-macos-arm64.dmg
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  linux:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - run: |
+          name=beeline-${{ needs.version.outputs.version }}-linux-x86_64
+          mkdir -p "dist/$name"
+          cp target/release/beeline README.md LICENSE "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    if: github.event_name != 'pull_request'
+    needs: [version, macos, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          cat > notes.md <<'EOF'
+          **macOS (Apple Silicon):** the app is not signed yet. After the first
+          try, open it from System Settings → Privacy & Security → Open Anyway,
+          or run `xattr -dr com.apple.quarantine /Applications/beeline.app`.
+
+          **Linux (x86_64):** unpack the archive and run `beeline`.
+          EOF
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --draft \
+              --title "beeline $VERSION" \
+              --notes-file notes.md \
+              --generate-notes
+          fi
