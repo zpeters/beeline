@@ -11,8 +11,10 @@
 
 use iced::Subscription;
 
-/// What a menu item asks the app to do.
+/// What a menu item asks the app to do. Only the macOS menu bar sends
+/// these, so elsewhere most of it goes unused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub enum Command {
     Settings,
     NewRequest,
@@ -29,6 +31,7 @@ pub enum Command {
     TrashCollection,
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 impl Command {
     const ALL: [Command; 13] = [
         Command::Settings,
