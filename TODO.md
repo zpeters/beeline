@@ -2,7 +2,10 @@
 
 - windows packaging / install
 
-- mac packaging / install
+- **Sign and notarise the macOS app.** `just dmg` builds an unsigned
+  disk image, so Gatekeeper warns when it is opened on another Mac. Needs
+  an Apple Developer ID; cargo-bundle has `apple_signing_*` settings, and
+  notarising means submitting with `xcrun notarytool` and stapling.
 
 - Request history (left out of the basic client on purpose; sparklines
   keep response times for the session only).
