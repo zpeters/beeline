@@ -8,7 +8,7 @@ use iced::widget::{column, pick_list, radio, row, rule, scrollable, text, text_e
 use iced::{Element, Fill};
 
 use crate::model::{Auth, AuthKind, BodyKind, METHODS, RequestFile};
-use crate::ui::{kv, theme};
+use crate::ui::{highlight, kv, theme};
 use crate::{query, vars};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -234,7 +234,11 @@ fn body_editor<'a>(req: &'a RequestFile, body: &'a text_editor::Content) -> Elem
                     .style(theme::editor)
                     .font(theme::mono())
                     .on_action(Msg::Body)
-                    .height(Fill),
+                    .height(Fill)
+                    .highlight_with::<highlight::Json>(
+                        req.body.kind == BodyKind::Json,
+                        highlight::format,
+                    ),
             );
         }
         BodyKind::Form => {

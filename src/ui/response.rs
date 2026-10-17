@@ -5,7 +5,7 @@ use iced::{Color, Element, Fill};
 
 use crate::format;
 use crate::http;
-use crate::ui::theme;
+use crate::ui::{highlight, theme};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Tab {
@@ -123,7 +123,8 @@ pub fn view(view: &View) -> Element<'_, Msg> {
                     .style(theme::editor)
                     .font(theme::mono())
                     .on_action(Msg::Edit)
-                    .height(Fill),
+                    .height(Fill)
+                    .highlight_with::<highlight::Json>(view.is_json, highlight::format),
             )
             .height(Fill)
             .into()
