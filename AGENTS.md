@@ -152,3 +152,7 @@ work is done and green.
 - Screenshots with `screencapture` are allowed on this Mac to verify UI
   changes. The first run may raise a screen-recording permission prompt
   for the terminal; that is expected.
+
+## Website
+
+`site/` is the GitHub Pages site (https://zpeters.github.io/beeline/): one static `index.html`, self-hosted fonts and copies of the screenshot and logo. `.github/workflows/pages.yml` deploys it when `site/` changes on `main`. Keep it in step with the README when features change. No em-dashes in its copy.

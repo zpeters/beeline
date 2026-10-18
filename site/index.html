@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>beeline: a minimal desktop API client</title>
+<meta name="description" content="A small, fast desktop API client. Collections are folders of JSON files you can diff and keep in git.">
+<meta property="og:title" content="beeline">
+<meta property="og:description" content="A minimal desktop API client. Your requests are plain JSON files.">
+<meta property="og:image" content="https://zpeters.github.io/beeline/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/jost.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+@font-face { font-family: "Jost"; src: url("fonts/jost.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "IBM Plex Mono"; src: url("fonts/plex-mono.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+
+/* Brand: navy + gold (from assets/logo). Gold is the one accent. Radius: 14px. */
+:root {
+	--bg: #f4f5f8;
+	--surface: #e9ecf2;
+	--text: #141c30;
+	--muted: #4a5368;
+	--line: #d5dae4;
+	--navy: #1a2540;
+	--gold: #d9a83a;
+	--gold-text: #8a6514;   /* gold dark enough for text on light backgrounds */
+	--btn-bg: #1a2540;
+	--btn-text: #f3d283;
+	--code-bg: #1a2540;
+	--code-text: #e6e9f0;
+	--radius: 14px;
+	color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #10172a;
+		--surface: #182240;
+		--text: #eef1f6;
+		--muted: #a3abbe;
+		--line: #263252;
+		--gold-text: #e7bd5c;
+		--btn-bg: #d9a83a;
+		--btn-text: #141c30;
+		--code-bg: #0b1120;
+	}
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 400 1.0625rem/1.6 "Jost", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+img { display: block; max-width: 100%; height: auto; }
+code, kbd, pre { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+p code { font-size: 0.88em; background: var(--surface); padding: 0.1em 0.4em; border-radius: 6px; white-space: nowrap; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+nav { height: 72px; display: flex; align-items: center; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: 10px; font-size: 1.3rem; font-weight: 500; letter-spacing: 0.02em; text-decoration: none; }
+.brand img { width: 30px; height: 30px; }
+nav .links { display: flex; gap: 28px; font-size: 0.98rem; }
+nav .links a { color: var(--muted); text-decoration: none; }
+nav .links a:hover { color: var(--text); }
+
+/* Hero: copy left, real screenshot right. */
+.hero { display: grid; grid-template-columns: 5fr 7fr; gap: 56px; align-items: center; padding: 56px 0 72px; }
+h1 { font-size: clamp(2.6rem, 5.2vw, 4.4rem); line-height: 1.02; font-weight: 500; letter-spacing: -0.02em; margin: 0 0 22px; }
+h1 em { font-style: normal; color: var(--gold-text); }
+.lede { font-size: 1.22rem; color: var(--muted); max-width: 36ch; margin: 0 0 34px; }
+.ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; height: 50px; padding: 0 24px; border-radius: var(--radius); font-weight: 500; font-size: 1.05rem; letter-spacing: 0.02em; text-decoration: none; white-space: nowrap; transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s; }
+.btn:active { transform: translateY(1px) scale(0.98); }
+.btn.primary { background: var(--btn-bg); color: var(--btn-text); }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn.secondary { border: 1px solid var(--line); }
+.btn.secondary:hover { background: var(--surface); }
+.shot { border-radius: 12px; box-shadow: 0 40px 80px -30px rgb(16 23 42 / 0.45), 0 0 0 1px rgb(16 23 42 / 0.08); }
+
+/* The brand rails: two gold lines, as on the banner. */
+.rails { height: 10px; border-top: 4px solid var(--gold); border-bottom: 2px solid color-mix(in srgb, var(--gold) 55%, transparent); }
+
+@media (prefers-reduced-motion: no-preference) {
+	.hero > * { animation: rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
+	.hero > :last-child { animation-delay: 0.12s; }
+	@keyframes rise { from { opacity: 0; transform: translateY(18px); } }
+}
+
+section { padding: 104px 0; }
+h2 { font-size: clamp(1.9rem, 3.4vw, 2.75rem); font-weight: 500; letter-spacing: -0.01em; line-height: 1.1; margin: 0 0 16px; }
+.intro { color: var(--muted); font-size: 1.15rem; max-width: 60ch; margin: 0 0 44px; }
+
+/* Files: tree and request side by side. */
+.files { display: grid; grid-template-columns: 1fr 1.25fr; gap: 20px; }
+pre { margin: 0; background: var(--code-bg); color: var(--code-text); border-radius: var(--radius); padding: 26px 28px; font-size: 0.92rem; line-height: 1.7; overflow-x: auto; }
+pre .c { color: #8792ab; }
+pre .k { color: #7cc4dc; }
+pre .s { color: #9fd39a; }
+pre .g { color: var(--gold); }
+figure { margin: 0; }
+figcaption { color: var(--muted); font-size: 0.95rem; margin-top: 12px; }
+
+/* Feature bento: 5 items, 5 cells. */
+.bento { display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: minmax(220px, auto); gap: 18px; }
+.cell { border-radius: var(--radius); padding: 30px; background: var(--surface); display: flex; flex-direction: column; gap: 10px; }
+.cell h3 { margin: 0; font-size: 1.4rem; font-weight: 500; }
+.cell p { margin: 0; color: var(--muted); }
+.c-editor { grid-column: span 4; }
+.c-import { grid-column: span 2; }
+.c-response { grid-column: span 2; background: var(--navy); color: #eef1f6; }
+.c-response p { color: #b8c0d2; }
+.c-curl { grid-column: span 2; }
+.c-local { grid-column: span 2; background: #1c2742; color: #eef1f6; overflow: hidden; padding-bottom: 0; }
+.c-local p { color: #c8cfdd; }
+.c-local img { margin: auto -30px 0; width: calc(100% + 60px); max-width: none; height: 150px; object-fit: cover; object-position: 0% 60%; }
+.vars { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+.var { font-family: "IBM Plex Mono", monospace; font-size: 0.9rem; padding: 6px 10px; border-radius: 8px; background: var(--bg); color: var(--gold-text); }
+.formats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+.formats span { padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 0.95rem; }
+.c-response .json { margin-top: auto; font-family: "IBM Plex Mono", monospace; font-size: 0.88rem; line-height: 1.6; }
+.c-curl code { margin-top: auto; display: block; font-size: 0.84rem; background: var(--code-bg); color: var(--code-text); border-radius: 10px; padding: 14px 16px; overflow-x: auto; white-space: nowrap; }
+
+/* Shortcuts: a row of keycaps. */
+.keys { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; }
+.key { display: flex; flex-direction: column; gap: 14px; }
+.key kbd { display: inline-flex; align-self: flex-start; gap: 6px; }
+.key kbd span { min-width: 46px; height: 46px; padding: 0 12px; display: grid; place-items: center; border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 10px; font-size: 1rem; background: var(--bg); }
+.key p { margin: 0; color: var(--muted); }
+
+/* Install */
+.install { display: grid; grid-template-columns: 1.2fr 1fr; gap: 56px; align-items: start; }
+.install ol { margin: 0 0 22px; padding-left: 1.3em; display: grid; gap: 12px; font-size: 1.1rem; }
+.install ol li::marker { color: var(--gold-text); font-weight: 600; }
+.install pre { font-size: 0.86rem; padding: 18px 22px; }
+.panel { background: var(--surface); border-radius: var(--radius); padding: 30px; }
+.panel h3 { margin: 0 0 10px; font-size: 1.25rem; font-weight: 500; }
+.panel p { margin: 0 0 16px; color: var(--muted); }
+.panel pre { margin-bottom: 0; }
+
+footer { padding: 36px 0 56px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 0.95rem; }
+
+@media (max-width: 1023px) {
+	.bento { grid-template-columns: repeat(2, 1fr); }
+	.c-editor { grid-column: span 2; }
+	.c-import, .c-response, .c-curl, .c-local { grid-column: span 1; }
+	.keys { grid-template-columns: repeat(3, 1fr); row-gap: 32px; }
+}
+@media (max-width: 767px) {
+	.wrap { padding: 0 16px; }
+	nav .links a:not(:last-child) { display: none; }
+	.hero { grid-template-columns: 1fr; gap: 40px; padding: 24px 0 56px; }
+	section { padding: 72px 0; }
+	.files, .install { grid-template-columns: 1fr; }
+	.bento { grid-template-columns: 1fr; }
+	.c-editor, .c-import, .c-response, .c-curl, .c-local { grid-column: span 1; }
+	.keys { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+	<nav>
+		<a class="brand" href="./"><img src="icon.svg" alt="">beeline</a>
+		<div class="links">
+			<a href="#features">Features</a>
+			<a href="#install">Install</a>
+			<a href="https://github.com/zpeters/beeline">GitHub</a>
+		</div>
+	</nav>
+
+	<header class="hero">
+		<div>
+			<h1>API requests as <em>plain files</em>.</h1>
+			<p class="lede">A small, fast desktop API client. Collections are folders of JSON files you can diff and keep in git.</p>
+			<div class="ctas">
+				<a class="btn primary" href="https://github.com/zpeters/beeline/releases/latest">Download</a>
+				<a class="btn secondary" href="https://github.com/zpeters/beeline">View source</a>
+			</div>
+		</div>
+		<img class="shot" src="screenshot.png" width="2200" height="1576" alt="beeline with a GET request open and a colour-highlighted JSON response">
+	</header>
+</div>
+
+<div class="rails" aria-hidden="true"></div>
+
+<section>
+	<div class="wrap">
+		<h2>A collection is a folder.</h2>
+		<p class="intro">Each request is one JSON file, and its name is the file name. Read it, hand-edit it, and review it in a pull request like any other code.</p>
+		<div class="files">
+			<figure>
+<pre><span class="g">my-api/</span>
+  environments/
+    dev.json
+  users/
+    list users.json
+    create user.json
+  health.json</pre>
+				<figcaption>Subfolders group requests in the sidebar.</figcaption>
+			</figure>
+			<figure>
+<pre>{
+  <span class="k">"method"</span>: <span class="s">"POST"</span>,
+  <span class="k">"url"</span>: <span class="s">"<span class="g">{{base}}</span>/users?notify=true"</span>,
+  <span class="k">"headers"</span>: [{ <span class="k">"key"</span>: <span class="s">"Accept"</span>, <span class="k">"value"</span>: <span class="s">"application/json"</span> }],
+  <span class="k">"body"</span>: { <span class="k">"type"</span>: <span class="s">"json"</span>, <span class="k">"text"</span>: <span class="s">"{\"name\": \"bee\"}"</span> },
+  <span class="k">"auth"</span>: { <span class="k">"type"</span>: <span class="s">"bearer"</span>, <span class="k">"token"</span>: <span class="s">"<span class="g">{{token}}</span>"</span> }
+}</pre>
+				<figcaption><code>users/create user.json</code>. Every field is optional.</figcaption>
+			</figure>
+		</div>
+	</div>
+</section>
+
+<section id="features" style="padding-top: 0">
+	<div class="wrap">
+		<h2>Everything a request needs.</h2>
+		<p class="intro">Nothing it does not: no scripting, no plugins, no cloud.</p>
+		<div class="bento">
+			<div class="cell c-editor">
+				<h3>Tabs, editor and environments</h3>
+				<p>Method, URL, params kept in sync with the URL, headers, JSON, text or form bodies, and bearer or basic auth. Keep several requests open in tabs. Put variables in <code>environments/&lt;name&gt;.json</code> and use them anywhere.</p>
+				<div class="vars"><span class="var">{{base}}</span><span class="var">{{token}}</span><span class="var">{{postId}}</span></div>
+			</div>
+			<div class="cell c-import">
+				<h3>Import what you have</h3>
+				<p>Bring requests in from other tools.</p>
+				<div class="formats"><span>cURL</span><span>OpenAPI 3</span><span>Postman v2.1</span><span>Bruno</span></div>
+			</div>
+			<div class="cell c-response">
+				<h3>Readable responses</h3>
+				<p>Status, time, size and headers. JSON is pretty-printed in server key order, with colours. Each tab keeps its last 20 sends.</p>
+			</div>
+			<div class="cell c-curl">
+				<h3>Copy as cURL</h3>
+				<p>See the exact command for a request.</p>
+				<code>curl -X POST 'https://api.example.com/users'</code>
+			</div>
+			<div class="cell c-local">
+				<h3>Yours, on your disk</h3>
+				<p>No account, no cloud sync and no telemetry.</p>
+				<img src="banner.png" alt="" loading="lazy">
+			</div>
+		</div>
+	</div>
+</section>
+
+<section style="padding-top: 0">
+	<div class="wrap">
+		<h2>Hands on the keyboard.</h2>
+		<p class="intro">On Linux, use Ctrl instead of ⌘.</p>
+		<div class="keys">
+			<div class="key"><kbd><span>⌘</span><span>Enter</span></kbd><p>Send the request</p></div>
+			<div class="key"><kbd><span>⌘</span><span>S</span></kbd><p>Save</p></div>
+			<div class="key"><kbd><span>⌘</span><span>T</span></kbd><p>New tab</p></div>
+			<div class="key"><kbd><span>⌘</span><span>W</span></kbd><p>Close tab</p></div>
+			<div class="key"><kbd><span>⌘</span><span>N</span></kbd><p>New request</p></div>
+		</div>
+	</div>
+</section>
+
+<section id="install" style="padding-top: 0">
+	<div class="wrap install">
+		<div>
+			<h2>Install on macOS.</h2>
+			<ol>
+				<li>Download the <code>.dmg</code> from the latest release.</li>
+				<li>Open it and drag <strong>beeline</strong> into Applications.</li>
+				<li>The app is not signed yet. On first launch, open <strong>System Settings → Privacy &amp; Security</strong> and click <strong>Open Anyway</strong>, or run:</li>
+			</ol>
+<pre>xattr -dr com.apple.quarantine /Applications/beeline.app</pre>
+		</div>
+		<div class="panel">
+			<h3>Linux, or from source</h3>
+			<p>The release has a Linux <code>.tar.gz</code>. To build it yourself, you need Rust from rustup.</p>
+<pre>git clone https://github.com/zpeters/beeline
+cd beeline
+cargo run --release</pre>
+		</div>
+	</div>
+</section>
+
+<div class="rails" aria-hidden="true"></div>
+<div class="wrap">
+	<footer>
+		<span>beeline is free software under the GPL-3.0-or-later.</span>
+		<a href="https://github.com/zpeters/beeline">github.com/zpeters/beeline</a>
+	</footer>
+</div>
+</body>
+</html>
