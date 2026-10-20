@@ -10,7 +10,9 @@ use iced::keyboard;
 use iced::mouse;
 use iced::theme::Mode;
 use iced::widget::pane_grid::{self, Axis, Configuration, Content, PaneGrid};
-use iced::widget::{column, container, mouse_area, row, rule, space, stack, text, text_editor};
+use iced::widget::{
+    column, container, mouse_area, row, rule, scrollable, space, stack, text, text_editor,
+};
 use iced::{Element, Fill, FillPortion, Point, Subscription, Task, Theme, event, window};
 use serde::{Deserialize, Serialize};
 
@@ -239,6 +241,8 @@ pub struct App {
     recents: Vec<PathBuf>,
     /// The collection menu, open at this point under the collection name.
     collection_menu: Option<Point>,
+    /// The ⋯ menu beside the collection name: the open collection's actions.
+    actions_menu: Option<Point>,
     /// The environment menu, open at this point under the environment name.
     env_menu: Option<Point>,
     /// The "+" menu beside REQUESTS: new request or folder.
@@ -328,6 +332,7 @@ impl App {
             settings,
             recents: Vec::new(),
             collection_menu: None,
+            actions_menu: None,
             env_menu: None,
             new_menu: None,
             sparks: HashMap::new(),
@@ -839,11 +844,13 @@ impl App {
             Action::Enter(_)
                 | Action::Exit(_)
                 | Action::ToggleCollectionMenu
+                | Action::ToggleActionsMenu
                 | Action::ToggleEnvMenu
                 | Action::ToggleNewMenu
         ) {
             self.context = None;
             self.collection_menu = None;
+            self.actions_menu = None;
             self.env_menu = None;
             self.new_menu = None;
         }
@@ -909,6 +916,12 @@ impl App {
             Action::Settings => self.open_settings(),
             Action::ToggleCollectionMenu => {
                 self.collection_menu = match self.collection_menu {
+                    Some(_) => None,
+                    None => Some(self.cursor),
+                };
+            }
+            Action::ToggleActionsMenu => {
+                self.actions_menu = match self.actions_menu {
                     Some(_) => None,
                     None => Some(self.cursor),
                 };
@@ -1149,6 +1162,7 @@ impl App {
             Message::CloseContext => {
                 self.context = None;
                 self.collection_menu = None;
+                self.actions_menu = None;
                 self.env_menu = None;
                 self.new_menu = None;
                 Task::none()
@@ -1694,6 +1708,9 @@ impl App {
         if let Some(at) = self.collection_menu {
             layers.push(self.collection_menu_view(at));
         }
+        if let Some(at) = self.actions_menu {
+            layers.push(self.actions_menu_view(at));
+        }
         if let Some(at) = self.env_menu {
             layers.push(self.env_menu_view(at));
         }
@@ -1861,21 +1878,10 @@ impl App {
         (dx.hypot(dy) > 6.0).then(|| (display_name(origin), self.cursor))
     }
 
-    /// A context menu at `at`. A click anywhere outside it closes it.
-    /// The menu under the collection name: recents, then the current
-    /// collection's Rename and Move to Trash, and New collection.
+    /// The menu under the collection name chooses a collection: recents,
+    /// then Open and New. The open collection's actions are in the ⋯ menu.
     fn collection_menu_view(&self, at: Point) -> Element<'_, Message> {
-        let item = |label: String, action: sidebar::Action| -> Element<'_, Message> {
-            theme::button(
-                text(label)
-                    .size(theme::text_px())
-                    .wrapping(iced::widget::text::Wrapping::WordOrGlyph),
-            )
-            .style(theme::text_button)
-            .width(Fill)
-            .on_press(Message::Sidebar(action))
-            .into()
-        };
+        let item = menu_item;
         let current = self.collection.as_ref().map(|c| c.root.as_path());
         let mut items: Vec<Element<'_, Message>> = Vec::new();
         if let Some(root) = current {
@@ -1898,8 +1904,8 @@ impl App {
                 sidebar::Action::SwitchCollection(recent.clone()),
             ));
         }
-        // On macOS the verbs live in the menu bar (File, Collection), so this
-        // menu only chooses a collection. Elsewhere it keeps them.
+        // On macOS Open and New live in the File menu, so this menu only
+        // chooses a collection.
         if cfg!(target_os = "macos") {
             return popup(items, at);
         }
@@ -1914,7 +1920,15 @@ impl App {
             "New collection…".into(),
             sidebar::Action::NewCollection,
         ));
-        if let Some(root) = current {
+        popup(items, at)
+    }
+
+    /// The ⋯ menu beside the collection name: the open collection's actions.
+    fn actions_menu_view(&self, at: Point) -> Element<'_, Message> {
+        let item = menu_item;
+        let mut items: Vec<Element<'_, Message>> = Vec::new();
+        if let Some(c) = &self.collection {
+            let root = c.root.as_path();
             items.push(item("Reload".into(), sidebar::Action::Reload));
             items.push(item("Import cURL…".into(), sidebar::Action::ImportCurl));
             items.push(item(
@@ -2157,10 +2171,23 @@ fn drag_ghost_layer(name: String, at: Point) -> Element<'static, Message> {
         .into()
 }
 
+/// One row of a sidebar menu.
+fn menu_item<'a>(label: String, action: sidebar::Action) -> Element<'a, Message> {
+    theme::button(
+        text(label)
+            .size(theme::text_px())
+            .wrapping(iced::widget::text::Wrapping::WordOrGlyph),
+    )
+    .style(theme::text_button)
+    .width(Fill)
+    .on_press(Message::Sidebar(action))
+    .into()
+}
+
 /// A sidebar menu card, opened just below `at`. Pressing anywhere outside
-/// it closes it.
+/// it closes it. A menu taller than the room below `at` scrolls.
 fn popup<'a>(items: Vec<Element<'a, Message>>, at: Point) -> Element<'a, Message> {
-    let card = container(column(items).spacing(2))
+    let card = container(scrollable(column(items).spacing(2)).spacing(4))
         .style(theme::card)
         .padding(6)
         .width(240);
@@ -2168,7 +2195,7 @@ fn popup<'a>(items: Vec<Element<'a, Message>>, at: Point) -> Element<'a, Message
         .padding(iced::Padding {
             top: at.y + 12.0,
             right: 0.0,
-            bottom: 0.0,
+            bottom: 12.0,
             left: 12.0,
         })
         .width(Fill)

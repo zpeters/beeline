@@ -95,7 +95,9 @@ there is no package yet.
 | ⌘ N | New request |
 
 On Linux and Windows, use Ctrl instead of ⌘. There is no menu bar there:
-the collection menu at the top of the sidebar has New, Open and Import.
+the collection name at the top of the sidebar switches, opens and creates
+collections, and the ⋯ beside it has Reload, Import, Rename and Move to
+Trash.
 
 ## File format
 

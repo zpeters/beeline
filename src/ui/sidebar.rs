@@ -40,6 +40,9 @@ pub enum Action {
     AddSamples(PathBuf),
     /// Opens or closes the collection menu under the collection name.
     ToggleCollectionMenu,
+    /// Opens or closes the ⋯ menu beside the collection name: reload,
+    /// import, rename and trash.
+    ToggleActionsMenu,
     /// Opens or closes the environment menu under the environment name.
     ToggleEnvMenu,
     /// Opens or closes the "+" menu beside REQUESTS.
@@ -113,11 +116,34 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "beeline".into());
     // The name always opens the collection menu, so recents, Open and New
-    // stay reachable even with no collection open.
-    let name = theme::button(text(format!("{title} ▾")).size(theme::heading_px()))
-        .style(theme::text_button)
-        .on_press(Action::ToggleCollectionMenu);
-    let mut col = column![name].spacing(6);
+    // stay reachable even with no collection open. The ⋯ beside it holds the
+    // open collection's actions; on macOS those are in the menu bar instead.
+    // A long name is cut short; the ▾ stays visible at the end.
+    let name = theme::button(
+        row![
+            container(
+                text(format::ellipsize(&title, 22))
+                    .size(theme::heading_px())
+                    .wrapping(iced::widget::text::Wrapping::None),
+            )
+            .width(Fill)
+            .clip(true),
+            text(" ▾").size(theme::heading_px()),
+        ]
+        .align_y(iced::Center),
+    )
+    .style(theme::text_button)
+    .width(Fill)
+    .on_press(Action::ToggleCollectionMenu);
+    let mut header = row![name].align_y(iced::Center);
+    if p.root.is_some() && !cfg!(target_os = "macos") {
+        header = header.push(
+            theme::button(text("⋯").size(theme::heading_px()))
+                .style(theme::text_button)
+                .on_press(Action::ToggleActionsMenu),
+        );
+    }
+    let mut col = column![header].spacing(6);
 
     if p.root.is_none() {
         col = col
