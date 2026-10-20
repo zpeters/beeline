@@ -239,7 +239,10 @@ mod tests {
     fn collections_dir_must_be_a_full_path() {
         assert!(Settings::collections_dir_problem("").is_none());
         assert!(Settings::collections_dir_problem("~/api").is_none());
+        #[cfg(not(windows))]
         assert!(Settings::collections_dir_problem("/srv/api").is_none());
+        #[cfg(windows)]
+        assert!(Settings::collections_dir_problem(r"D:\projects\api").is_none());
         assert!(Settings::collections_dir_problem("api").is_some());
     }
 

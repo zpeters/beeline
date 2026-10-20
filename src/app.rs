@@ -52,9 +52,15 @@ struct SavedState {
     recents: Vec<PathBuf>,
 }
 
+/// The user's home folder: `HOME` on macOS and Linux, `USERPROFILE` on
+/// Windows (which has no `HOME`).
+fn home_dir() -> Option<PathBuf> {
+    std::env::home_dir().filter(|p| !p.as_os_str().is_empty())
+}
+
 /// `~/.config/beeline/state.json`, or None when there is no home folder.
 fn state_path() -> Option<PathBuf> {
-    Some(PathBuf::from(std::env::var_os("HOME")?).join(".config/beeline/state.json"))
+    Some(home_dir()?.join(".config/beeline/state.json"))
 }
 
 fn load_state() -> SavedState {
@@ -66,7 +72,7 @@ fn load_state() -> SavedState {
 
 /// `~/.config/beeline/settings.json`, or None when there is no home folder.
 fn settings_path() -> Option<PathBuf> {
-    Some(PathBuf::from(std::env::var_os("HOME")?).join(".config/beeline/settings.json"))
+    Some(home_dir()?.join(".config/beeline/settings.json"))
 }
 
 /// The saved settings, or the defaults when there is no file or it is
@@ -443,8 +449,7 @@ impl App {
 
     /// The folder collections are created in, from the settings.
     fn collections_dir(&self) -> Option<PathBuf> {
-        let home = PathBuf::from(std::env::var_os("HOME")?);
-        Some(self.settings.collections_dir(&home))
+        Some(self.settings.collections_dir(&home_dir()?))
     }
 
     fn notify(&mut self, text: impl Into<String>, error: bool) {
