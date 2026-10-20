@@ -41,3 +41,11 @@ tempfile = "3.27.0"
 [target.'cfg(target_os = "macos")'.dependencies]
 # Only the macOS menu bar; its default `gtk3` feature is the Linux backend.
 muda = { version = "0.21.2", default-features = false }
+
+[build-dependencies]
+# build.rs decodes the app icon for the window, and packs the .ico on Windows.
+png = "0.18.1"
+
+[target.'cfg(windows)'.build-dependencies]
+# Embeds the icon in beeline.exe, so Explorer and shortcuts show it.
+winresource = { version = "0.1.34", default-features = false }

@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://github.com/zpeters/beeline/actions/workflows/ci.yml"><img src="https://github.com/zpeters/beeline/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-1a2540" alt="License: GPL-3.0-or-later"></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-d9a83a" alt="Platform: macOS and Linux">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-d9a83a" alt="Platform: macOS, Linux and Windows">
   <img src="https://img.shields.io/badge/built%20with-Rust%20%2B%20iced-1a2540" alt="Built with Rust and iced">
 </p>
 
@@ -59,6 +59,13 @@ and click **Open Anyway**. Or run:
 xattr -dr com.apple.quarantine /Applications/beeline.app
 ```
 
+### Windows
+
+Download the `-windows-x86_64.zip` from the
+[latest release](https://github.com/zpeters/beeline/releases/latest), unzip
+it, and run `beeline.exe`. The exe is not signed yet, so SmartScreen may
+warn the first time: click **More info → Run anyway**.
+
 ### From source
 
 You need Rust (from [rustup](https://rustup.rs/)). The Nix flake and
@@ -70,11 +77,12 @@ cd beeline
 just run                     # open the last collection
 cargo run -- examples/demo   # open a folder as the collection
 just install-mac             # build beeline.app and copy it into /Applications
+just install-win             # build beeline.exe, install it with a Start menu shortcut
 ```
 
 CI builds and tests beeline on macOS and Linux. On Linux, build it from
-source as above (`cargo run --release`); there is no package yet. Windows
-is untested. Reports are welcome.
+source as above (`cargo run --release`) or use the release's `.tar.gz`;
+there is no package yet.
 
 ## Shortcuts
 

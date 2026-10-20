@@ -1,7 +1,8 @@
 name: Release
 
-# Pushing a tag such as v0.2.0 builds the macOS disk image and a Linux
-# archive, then opens a draft GitHub release with both attached. Edit the
+# Pushing a tag such as v0.2.0 builds the macOS disk image, a Linux
+# archive and a Windows zip, then opens a draft GitHub release with them
+# attached. Edit the
 # notes and publish it by hand. If a release for the tag already exists,
 # the files are uploaded to it instead (replacing any with the same name).
 #
@@ -89,9 +90,28 @@ jobs:
           path: dist/*.tar.gz
           if-no-files-found: error
 
+  windows:
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: just bundle-win
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: dist/*.zip
+          if-no-files-found: error
+
   release:
     if: github.event_name != 'pull_request'
-    needs: [version, macos, linux]
+    needs: [version, macos, linux, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -110,6 +130,9 @@ jobs:
           or run `xattr -dr com.apple.quarantine /Applications/beeline.app`.
 
           **Linux (x86_64):** unpack the archive and run `beeline`.
+
+          **Windows (x86_64):** unzip it and run `beeline.exe`. The exe is not
+          signed yet, so SmartScreen may warn: choose More info → Run anyway.
           EOF
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber

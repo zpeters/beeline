@@ -246,7 +246,7 @@ footer { padding: 36px 0 56px; display: flex; justify-content: space-between; fl
 <section style="padding-top: 0">
 	<div class="wrap">
 		<h2>Hands on the keyboard.</h2>
-		<p class="intro">On Linux, use Ctrl instead of ⌘.</p>
+		<p class="intro">On Linux and Windows, use Ctrl instead of ⌘.</p>
 		<div class="keys">
 			<div class="key"><kbd><span>⌘</span><span>Enter</span></kbd><p>Send the request</p></div>
 			<div class="key"><kbd><span>⌘</span><span>S</span></kbd><p>Save</p></div>
@@ -269,8 +269,8 @@ footer { padding: 36px 0 56px; display: flex; justify-content: space-between; fl
 <pre>xattr -dr com.apple.quarantine /Applications/beeline.app</pre>
 		</div>
 		<div class="panel">
-			<h3>Linux, or from source</h3>
-			<p>The release has a Linux <code>.tar.gz</code>. To build it yourself, you need Rust from rustup.</p>
+			<h3>Linux, Windows, or from source</h3>
+			<p>The release has a Linux <code>.tar.gz</code> and a Windows <code>.zip</code>. To build it yourself, you need Rust from rustup.</p>
 <pre>git clone https://github.com/zpeters/beeline
 cd beeline
 cargo run --release</pre>

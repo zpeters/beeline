@@ -91,13 +91,20 @@ just check        # fmt --check + clippy -D warnings + test
 just bundle-mac   # build target/release/bundle/osx/beeline.app (and a .dmg)
 just install-mac  # copy beeline.app into /Applications
 just dmg          # build dist/beeline-<version>.dmg (drag-to-Applications)
+just bundle-win   # (Windows) build dist/beeline-<version>-windows-x86_64.zip
+just install-win  # (Windows) install beeline.exe for this user + Start menu shortcut
 ```
+
+On Windows, just runs recipes with `pwsh`. A release build there is a GUI
+app (`windows_subsystem = "windows"` in `main.rs`, so no console window);
+`build.rs` packs `assets/icon/*.png` into the exe's icon.
 
 ## Releases
 
 `.github/workflows/release.yml` makes them. Pushing a `v<version>` tag
-builds `beeline-<version>-macos-arm64.dmg` and
-`beeline-<version>-linux-x86_64.tar.gz` and opens a **draft** GitHub
+builds `beeline-<version>-macos-arm64.dmg`,
+`beeline-<version>-linux-x86_64.tar.gz` and
+`beeline-<version>-windows-x86_64.zip` and opens a **draft** GitHub
 release with both attached. The tag must match `Cargo.toml`.
 
 1. Bump `version` in `Cargo.toml` (it also changes `Cargo.lock`) and

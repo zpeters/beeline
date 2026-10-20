@@ -1,4 +1,7 @@
 #![forbid(unsafe_code)]
+// A release build on Windows is a GUI app: no console window opens with it.
+// Debug builds keep the console so `cargo run` still shows panics and logs.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod app;
 mod collection;
@@ -48,8 +51,19 @@ fn main() -> iced::Result {
         ],
         ..Default::default()
     })
-    .window_size((1100.0, 760.0))
-    .exit_on_close_request(false)
+    .window(iced::window::Settings {
+        size: iced::Size::new(1100.0, 760.0),
+        exit_on_close_request: false,
+        icon: window_icon(),
+        ..Default::default()
+    })
     .subscription(app::App::subscription)
     .run()
+}
+
+/// The title bar and taskbar icon (Windows, Linux; macOS uses the bundle's).
+/// build.rs decodes it from `assets/icon/128x128.png`.
+fn window_icon() -> Option<iced::window::Icon> {
+    const RGBA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/icon.rgba"));
+    iced::window::icon::from_rgba(RGBA.to_vec(), 128, 128).ok()
 }

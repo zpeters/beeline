@@ -1,6 +1,12 @@
 # beeline dev tasks. Run `just` to list them.
 
-version := `grep -m1 '^version' Cargo.toml | cut -d'"' -f2`
+set windows-shell := ["pwsh", "-NoLogo", "-NoProfile", "-Command"]
+
+version := if os_family() == "windows" {
+    `(Select-String -Path Cargo.toml -Pattern '^version' | Select-Object -First 1).Line.Split('"')[1]`
+} else {
+    `grep -m1 '^version' Cargo.toml | cut -d'"' -f2`
+}
 
 default:
     @just --list
@@ -47,6 +53,31 @@ dmg: bundle-mac
     hdiutil create -quiet -ov -volname beeline -fs HFS+ -format UDZO \
         -srcfolder target/release/bundle/dmg-stage dist/beeline-{{version}}.dmg
     @echo "dist/beeline-{{version}}.dmg"
+
+# Build a release beeline.exe (no console window, icon embedded) and zip it
+# with the README and LICENSE at dist/beeline-<version>-windows-x86_64.zip.
+[windows]
+bundle-win:
+    cargo build --release
+    $name = "beeline-{{version}}-windows-x86_64"; \
+    Remove-Item -Recurse -Force "dist/$name", "dist/$name.zip" -ErrorAction Ignore; \
+    New-Item -ItemType Directory -Force "dist/$name" | Out-Null; \
+    Copy-Item target/release/beeline.exe, README.md, LICENSE "dist/$name/"; \
+    Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"; \
+    "dist/$name.zip"
+
+# Build beeline.exe and install it for this user: the exe goes in
+# %LOCALAPPDATA%\Programs\beeline, with a Start menu shortcut.
+[windows]
+install-win: bundle-win
+    $dir = "$env:LOCALAPPDATA\Programs\beeline"; \
+    New-Item -ItemType Directory -Force $dir | Out-Null; \
+    Copy-Item -Force target/release/beeline.exe $dir; \
+    $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\beeline.lnk"); \
+    $lnk.TargetPath = "$dir\beeline.exe"; \
+    $lnk.WorkingDirectory = $dir; \
+    $lnk.Save(); \
+    "Installed $dir\beeline.exe"
 
 # Render the app icon PNGs, the README banner and the GitHub social
 # preview from their SVG sources.
