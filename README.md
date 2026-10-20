@@ -38,7 +38,7 @@ no cloud sync and no telemetry.
 - **History.** Each request tab keeps its last 20 sends for the session;
   pick one to see that response again.
 - **Import** from a cURL command, an OpenAPI 3 or Postman v2.1 file, or a
-  Bruno folder.
+  Bruno folder (a `.bru` or YAML collection, or a whole workspace).
 - **Copy as cURL.** See the exact command for a request and copy it.
 - **Response-time sparklines** in the sidebar, for the current session.
 - **Light, dark or system theme**, with a choice of fonts and text size.

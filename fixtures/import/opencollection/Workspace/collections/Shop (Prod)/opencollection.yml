@@ -1,0 +1,14 @@
+opencollection: 1.0.0
+
+info:
+  name: Shop (Prod)
+
+request:
+  auth:
+    type: apikey
+    key: Api-Key
+    value: prod-key-000
+    placement: header
+  variables:
+    - name: API_URL
+      value: https://shop.example.test/prod

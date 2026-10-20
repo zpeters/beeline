@@ -4,6 +4,7 @@
 pub mod bruno;
 pub mod curl;
 pub mod openapi;
+pub mod opencollection;
 pub mod postman;
 
 use std::fs;
@@ -60,14 +61,39 @@ pub fn parse_file(text: &str) -> Result<Imported, String> {
     Err("Not an OpenAPI 3 spec or a Postman collection".into())
 }
 
-/// Reads a Bruno collection folder: `bruno.json` names it, `collection.bru`
-/// and each `folder.bru` give inherited settings, and every other `.bru`
-/// file with a method block is a request. `environments/` is skipped.
+/// Reads a Bruno folder, whichever of its formats it is:
+///
+/// - a workspace (`workspace.yml`): each collection it lists, each in a
+///   folder of its own;
+/// - a YAML collection (`opencollection.yml`), with `folder.yml` files and
+///   `.yml` requests;
+/// - a `.bru` collection (`bruno.json`), with `collection.bru` and
+///   `folder.bru` files and `.bru` requests.
+///
+/// Collection and folder files give inherited settings. `environments/`
+/// is skipped.
 pub fn read_bruno(dir: &Path) -> Result<Imported, String> {
+    let dir_name = || dir.file_name().map(|n| n.to_string_lossy().into_owned());
+    let workspace = dir.join("workspace.yml");
+    if workspace.is_file() {
+        return read_workspace(dir, &read_yaml(&workspace)?);
+    }
+    let manifest = dir.join("opencollection.yml");
+    if manifest.is_file() {
+        let doc = read_yaml(&manifest)?;
+        let name = info_name(&doc)
+            .or_else(dir_name)
+            .unwrap_or_else(|| "Bruno import".into());
+        let root = opencollection::inherit(&bruno::Inherited::default(), &doc);
+        let mut items = Vec::new();
+        walk_bruno(dir, &[], &root, Format::Yaml, true, &mut items)?;
+        return Ok(Imported { name, items });
+    }
     let manifest = dir.join("bruno.json");
     if !manifest.is_file() {
         return Err(format!(
-            "{} is not a Bruno collection (no bruno.json)",
+            "{} is not a Bruno collection or workspace (no bruno.json, \
+             opencollection.yml or workspace.yml)",
             dir.display()
         ));
     }
@@ -75,19 +101,106 @@ pub fn read_bruno(dir: &Path) -> Result<Imported, String> {
         .ok()
         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
         .and_then(|v| v.get("name").and_then(|n| n.as_str()).map(str::to_string))
-        .or_else(|| dir.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .or_else(dir_name)
         .unwrap_or_else(|| "Bruno import".into());
-    let root = layer(&bruno::Inherited::default(), &dir.join("collection.bru"));
+    let root = Format::Bru.layer(&bruno::Inherited::default(), &dir.join("collection.bru"));
     let mut items = Vec::new();
-    walk_bruno(dir, &[], &root, true, &mut items)?;
+    walk_bruno(dir, &[], &root, Format::Bru, true, &mut items)?;
     Ok(Imported { name, items })
 }
 
-/// `parent` with the settings file at `path` layered on, if there is one.
-fn layer(parent: &bruno::Inherited, path: &Path) -> bruno::Inherited {
-    match fs::read_to_string(path) {
-        Ok(text) => bruno::inherit(parent, &text),
-        Err(_) => parent.clone(),
+/// A workspace's collections, each read as its own collection and put in
+/// a folder named after it.
+fn read_workspace(dir: &Path, doc: &serde_json::Value) -> Result<Imported, String> {
+    let name = info_name(doc)
+        .or_else(|| dir.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "Bruno workspace".into());
+    let mut items = Vec::new();
+    for (collection, path) in opencollection::workspace_collections(doc) {
+        // Paths to collections inside the workspace are relative to it; paths
+        // to collections kept elsewhere are relative to its `collections/`.
+        let inside = dir.join(&path);
+        let path = if inside.is_dir() {
+            inside
+        } else {
+            dir.join("collections").join(&path)
+        };
+        let inner = read_bruno(&path)?;
+        items.extend(inner.items.into_iter().map(|mut item| {
+            item.folders.insert(0, collection.clone());
+            item
+        }));
+    }
+    Ok(Imported { name, items })
+}
+
+fn read_yaml(path: &Path) -> Result<serde_json::Value, String> {
+    let text =
+        fs::read_to_string(path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+    openapi::read(&text).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// `info.name` of a YAML collection or workspace file.
+fn info_name(doc: &serde_json::Value) -> Option<String> {
+    doc.get("info")?.get("name")?.as_str().map(str::to_string)
+}
+
+/// Which of Bruno's two file formats a collection is in.
+#[derive(Clone, Copy)]
+enum Format {
+    Bru,
+    Yaml,
+}
+
+impl Format {
+    fn folder_file(self) -> &'static str {
+        match self {
+            Format::Bru => "folder.bru",
+            Format::Yaml => "folder.yml",
+        }
+    }
+
+    /// True for a file that may be a request: the format's extension, and
+    /// not one of its settings files.
+    fn is_request_file(self, name: &str) -> bool {
+        match self {
+            Format::Bru => {
+                name.ends_with(".bru") && name != "collection.bru" && name != "folder.bru"
+            }
+            Format::Yaml => {
+                (name.ends_with(".yml") || name.ends_with(".yaml"))
+                    && name != "opencollection.yml"
+                    && name != "folder.yml"
+            }
+        }
+    }
+
+    /// `parent` with the settings file at `path` layered on, if there is one.
+    fn layer(self, parent: &bruno::Inherited, path: &Path) -> bruno::Inherited {
+        let Ok(text) = fs::read_to_string(path) else {
+            return parent.clone();
+        };
+        match self {
+            Format::Bru => bruno::inherit(parent, &text),
+            Format::Yaml => match openapi::read(&text) {
+                Ok(doc) => opencollection::inherit(parent, &doc),
+                Err(_) => parent.clone(),
+            },
+        }
+    }
+
+    fn request(
+        self,
+        text: &str,
+        fallback_name: &str,
+        inherited: &bruno::Inherited,
+    ) -> Option<(String, RequestFile)> {
+        match self {
+            Format::Bru => bruno::request(text, fallback_name, inherited),
+            Format::Yaml => {
+                opencollection::request(&openapi::read(text).ok()?, fallback_name, inherited)
+            }
+        }
     }
 }
 
@@ -95,6 +208,7 @@ fn walk_bruno(
     dir: &Path,
     folders: &[String],
     inherited: &bruno::Inherited,
+    format: Format,
     is_root: bool,
     out: &mut Vec<Item>,
 ) -> Result<(), String> {
@@ -115,17 +229,14 @@ fn walk_bruno(
             if is_root && file_name == "environments" {
                 continue;
             }
-            let inner = layer(inherited, &path.join("folder.bru"));
+            let inner = format.layer(inherited, &path.join(format.folder_file()));
             let mut nested = folders.to_vec();
             nested.push(file_name);
-            walk_bruno(&path, &nested, &inner, false, out)?;
-        } else if path.extension().is_some_and(|e| e == "bru")
-            && file_name != "collection.bru"
-            && file_name != "folder.bru"
-        {
+            walk_bruno(&path, &nested, &inner, format, false, out)?;
+        } else if format.is_request_file(&file_name) {
             let text = fs::read_to_string(&path)
                 .map_err(|e| format!("Could not read {}: {e}", path.display()))?;
-            if let Some((name, req)) = bruno::request(&text, &collection::stem(&path), inherited) {
+            if let Some((name, req)) = format.request(&text, &collection::stem(&path), inherited) {
                 out.push(Item {
                     folders: folders.to_vec(),
                     name,
@@ -474,6 +585,89 @@ mod fixtures {
         assert!(req("Viewer").body.text.contains("\"query\""));
     }
 
+    fn bruno_workspace() -> Imported {
+        let dir =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/import/opencollection/Workspace");
+        read_bruno(&dir).unwrap()
+    }
+
+    #[test]
+    fn bruno_yaml_workspace() {
+        let imported = bruno_workspace();
+        assert_eq!(imported.name, "Shop");
+        let paths: Vec<String> = imported
+            .items
+            .iter()
+            .map(|i| [i.folders.clone(), vec![i.name.clone()]].concat().join("/"))
+            .collect();
+        assert_eq!(
+            paths,
+            vec![
+                "Shop Test/Health",
+                "Shop Test/Orders/Add Order",
+                "Shop (Prod)/Orders",
+            ]
+        );
+
+        let health = &imported.items[0].req;
+        assert_eq!(health.url, "{{API_URL}}/health");
+        assert_eq!(
+            health.headers,
+            vec![KeyValue::new("Api-Key", "test-key-000")]
+        );
+        assert_eq!(
+            health.vars,
+            vec![KeyValue::new("API_URL", "https://shop.example.test/api")],
+            "the disabled duplicate is dropped"
+        );
+
+        let add = &imported.items[1].req;
+        assert_eq!(add.method, "POST");
+        assert_eq!(add.body.kind, BodyKind::Json);
+        assert!(add.body.text.starts_with("{\n"));
+        assert!(add.body.text.contains(r#""C:\\orders\\bee.txt""#));
+        assert!(
+            add.headers
+                .contains(&KeyValue::new("Accept", "application/json"))
+        );
+        assert!(add.vars.contains(&KeyValue::new("StoreID", "1669580986")));
+
+        let prod = &imported.items[2].req;
+        assert_eq!(prod.url, "{{API_URL}}/orders?$top=1");
+        assert_eq!(prod.params.len(), 2);
+        assert!(!prod.params[1].enabled);
+        assert_eq!(prod.headers, vec![KeyValue::new("Api-Key", "prod-key-000")]);
+    }
+
+    #[test]
+    fn workspace_paths_outside_it_resolve_from_its_collections_folder() {
+        let base = tempfile::tempdir().unwrap();
+        let ws = base.path().join("W");
+        fs::create_dir_all(ws.join("collections")).unwrap();
+        fs::write(
+            ws.join("workspace.yml"),
+            "info:\n  name: W\ncollections:\n  - name: Away\n    path: \"../../Away/Away\"\n",
+        )
+        .unwrap();
+        let away = base.path().join("Away/Away");
+        fs::create_dir_all(&away).unwrap();
+        fs::write(away.join("opencollection.yml"), "info:\n  name: Away\n").unwrap();
+        fs::write(
+            away.join("Ping.yml"),
+            "http:\n  method: GET\n  url: https://x\n",
+        )
+        .unwrap();
+        let imported = read_bruno(&ws).unwrap();
+        assert_eq!(imported.items.len(), 1);
+        assert_eq!(imported.items[0].folders, vec!["Away"]);
+    }
+
+    #[test]
+    fn a_folder_that_is_no_bruno_format_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_bruno(dir.path()).is_err());
+    }
+
     /// Parses every Bruno collection under `$BEELINE_BRUNO_DIR`, so real
     /// exports can be checked without copying them into the repo:
     /// `BEELINE_BRUNO_DIR=~/api cargo test real_bruno -- --ignored --nocapture`
@@ -489,13 +683,15 @@ mod fixtures {
                 let path = entry.path();
                 if path.is_dir() && !path.ends_with("node_modules") {
                     stack.push(path);
-                } else if path.file_name().is_some_and(|n| n == "bruno.json") {
+                } else if path.file_name().is_some_and(|n| {
+                    n == "bruno.json" || n == "opencollection.yml" || n == "workspace.yml"
+                }) {
                     manifests.push(dir.clone());
                 }
             }
         }
         manifests.sort();
-        assert!(!manifests.is_empty(), "no bruno.json found");
+        assert!(!manifests.is_empty(), "no Bruno collection found");
         for dir in manifests {
             let imported = read_bruno(&dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
             println!("{:>4} requests  {}", imported.items.len(), dir.display());
@@ -508,6 +704,7 @@ mod fixtures {
         write(dir.path(), &petstore()).unwrap();
         write(dir.path(), &shop()).unwrap();
         write(dir.path(), &bruno_shop()).unwrap();
-        assert_eq!(request_count(&scan(dir.path()).unwrap()), 4 + 6 + 7);
+        write(dir.path(), &bruno_workspace()).unwrap();
+        assert_eq!(request_count(&scan(dir.path()).unwrap()), 4 + 6 + 7 + 3);
     }
 }

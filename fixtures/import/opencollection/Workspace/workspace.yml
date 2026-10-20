@@ -1,0 +1,14 @@
+opencollection: 1.0.0
+info:
+  name: "Shop"
+  type: workspace
+
+collections:
+  - name: "Shop Test"
+    path: "collections/Shop Test"
+  - name: "Shop (Prod)"
+    path: "collections/Shop (Prod)"
+
+specs:
+
+docs: ''

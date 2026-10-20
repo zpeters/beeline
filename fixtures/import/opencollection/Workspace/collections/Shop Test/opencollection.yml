@@ -1,0 +1,26 @@
+opencollection: 1.0.0
+
+info:
+  name: Shop Test
+config:
+  proxy:
+    inherit: true
+
+request:
+  auth:
+    type: apikey
+    key: Api-Key
+    value: test-key-000
+    placement: header
+  variables:
+    - name: API_URL
+      value: https://shop.example.test/api
+    - name: API_URL
+      value: http://localhost:8081
+      disabled: true
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

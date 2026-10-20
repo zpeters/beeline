@@ -1,0 +1,29 @@
+info:
+  name: Add Order
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{API_URL}}/orders/{{StoreID}}"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |2-
+        {
+            "Sku": "BEE-1",
+            "Path": "C:\\orders\\bee.txt",
+            "Qty": 2
+          }
+  auth: inherit
+
+runtime:
+  variables:
+    - name: StoreID
+      value: "1669580986"
+
+settings:
+  encodeUrl: true
+  timeout: 0

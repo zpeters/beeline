@@ -174,7 +174,7 @@ pub fn inherit(parent: &Inherited, text: &str) -> Inherited {
 
 /// `base` with `over`'s rows added; a row in `over` replaces any row in
 /// `base` with the same key.
-fn layered(base: &[KeyValue], over: Vec<KeyValue>) -> Vec<KeyValue> {
+pub(super) fn layered(base: &[KeyValue], over: Vec<KeyValue>) -> Vec<KeyValue> {
     let mut out: Vec<KeyValue> = base
         .iter()
         .filter(|b| !over.iter().any(|o| o.key.eq_ignore_ascii_case(&b.key)))
@@ -252,23 +252,7 @@ pub fn request(
         AuthSpec::Inherit => inherited.auth.clone(),
         own => own,
     };
-    let auth = match auth {
-        AuthSpec::None | AuthSpec::Inherit => Auth::default(),
-        AuthSpec::Plain(a) => a,
-        AuthSpec::ApiKey {
-            key,
-            value,
-            in_query,
-        } => {
-            if in_query {
-                params.push(KeyValue::new(key, value));
-                url = query::url_from_params(&url, &params);
-            } else {
-                headers.push(KeyValue::new(key, value));
-            }
-            Auth::default()
-        }
-    };
+    let auth = apply_auth(auth, &mut url, &mut params, &mut headers);
 
     let body = match value_of(Some(spec), "body").as_deref() {
         Some("json") => text_body(BodyKind::Json, text_of(find(&blocks, "body:json"))),
@@ -300,7 +284,34 @@ pub fn request(
     ))
 }
 
-fn text_body(kind: BodyKind, text: String) -> Body {
+/// The beeline auth for `spec`. An API key becomes a header or query row
+/// instead, added to `headers` or to `params` and `url`.
+pub(super) fn apply_auth(
+    spec: AuthSpec,
+    url: &mut String,
+    params: &mut Vec<KeyValue>,
+    headers: &mut Vec<KeyValue>,
+) -> Auth {
+    match spec {
+        AuthSpec::None | AuthSpec::Inherit => Auth::default(),
+        AuthSpec::Plain(a) => a,
+        AuthSpec::ApiKey {
+            key,
+            value,
+            in_query,
+        } => {
+            if in_query {
+                params.push(KeyValue::new(key, value));
+                *url = query::url_from_params(url, params);
+            } else {
+                headers.push(KeyValue::new(key, value));
+            }
+            Auth::default()
+        }
+    }
+}
+
+pub(super) fn text_body(kind: BodyKind, text: String) -> Body {
     Body {
         kind,
         text,

@@ -1,0 +1,8 @@
+info:
+  name: Orders
+  type: folder
+
+request:
+  headers:
+    - name: Accept
+      value: application/json
