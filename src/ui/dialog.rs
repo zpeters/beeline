@@ -38,6 +38,7 @@ pub enum Msg {
     CurlImport,
     DocsUrl(String),
     DocsImport,
+    DocsReport,
 }
 
 /// Puts a dimmed backdrop behind `content`, centred.
@@ -208,13 +209,16 @@ pub fn import_docs<'a>(url: &'a str, busy: bool, error: Option<&'a str>) -> Elem
         col = col.push(text(error).style(text::danger));
     }
     let can_import = !busy && !url.trim().is_empty();
-    col = col.push(
-        row![
-            theme::button("Import").on_press_maybe(can_import.then_some(Msg::DocsImport)),
-            theme::button("Cancel").on_press(Msg::Cancel),
-        ]
-        .spacing(8),
-    );
+    let mut buttons = row![
+        theme::button("Import").on_press_maybe(can_import.then_some(Msg::DocsImport)),
+        theme::button("Cancel").on_press(Msg::Cancel),
+    ]
+    .spacing(8);
+    // A failure can be reported as an issue, prefilled in the browser.
+    if error.is_some() {
+        buttons = buttons.push(theme::button("Report this page").on_press(Msg::DocsReport));
+    }
+    col = col.push(buttons);
     overlay(col.into())
 }
 

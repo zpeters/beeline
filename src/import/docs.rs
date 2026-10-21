@@ -110,6 +110,22 @@ fn is_url_value(before: &str) -> bool {
         .is_some_and(|rest| !rest.ends_with(|c: char| c.is_alphanumeric() || c == '_'))
 }
 
+/// A title and body for a GitHub issue about a docs URL that did not
+/// import. Only the URL the user typed and beeline's reason go in; nothing
+/// from the page.
+pub fn report_text(url: &str, reason: &str) -> (String, String) {
+    let host = Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        .unwrap_or_else(|| url.to_string());
+    let title = format!("Import failed for {host}");
+    let body = format!(
+        "Docs page: {url}\n\nbeeline said: {reason}\n\n\
+         Please add support for this site, or attach its OpenAPI or Swagger file.\n"
+    );
+    (title, body)
+}
+
 /// Fetches `url` and imports the API it describes. The URL may be a docs
 /// page with a spec link, or the spec itself.
 pub fn fetch(url: &str, timeout: Duration) -> Result<Imported, String> {
@@ -303,6 +319,14 @@ mod tests {
         ]);
         let err = fetch(&format!("{base}/docs"), Duration::from_secs(5)).unwrap_err();
         assert!(err.contains("Unsupported OpenAPI version"), "{err}");
+    }
+
+    #[test]
+    fn a_report_names_the_url_and_the_reason_only() {
+        let (title, body) = report_text("https://docs.example.test/api", "No OpenAPI spec found");
+        assert!(title.contains("docs.example.test"), "{title}");
+        assert!(body.contains("https://docs.example.test/api"), "{body}");
+        assert!(body.contains("No OpenAPI spec found"), "{body}");
     }
 
     #[test]

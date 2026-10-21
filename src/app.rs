@@ -16,6 +16,7 @@ use iced::widget::{
 use iced::{Element, Fill, FillPortion, Point, Subscription, Task, Theme, event, window};
 use serde::{Deserialize, Serialize};
 
+use crate::browser;
 use crate::collection::{self, Node};
 use crate::export::postman;
 use crate::history::History;
@@ -1352,6 +1353,23 @@ impl App {
         )
     }
 
+    /// Opens a prefilled GitHub issue for a docs URL that did not import. The
+    /// issue holds the URL and the reason only.
+    fn report_docs_failure(&mut self) {
+        let Some(Modal::ImportDocs {
+            url,
+            error: Some(reason),
+            ..
+        }) = &self.modal
+        else {
+            return;
+        };
+        let (title, body) = import::docs::report_text(url, reason);
+        if let Err(e) = browser::open(&browser::new_issue_url(&title, &body)) {
+            self.notify(e, true);
+        }
+    }
+
     /// Imports the spec a docs fetch found, or shows why it found none.
     fn docs_fetched(&mut self, result: Result<import::Imported, String>) {
         match result {
@@ -1670,6 +1688,10 @@ impl App {
                 Task::none()
             }
             dialog::Msg::DocsImport => self.start_docs_import(),
+            dialog::Msg::DocsReport => {
+                self.report_docs_failure();
+                Task::none()
+            }
             dialog::Msg::SettingsSave => {
                 self.settings_save();
                 Task::none()
