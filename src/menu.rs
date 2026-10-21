@@ -122,6 +122,7 @@ mod mac {
     use muda::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 
     use super::Command;
+    use crate::labels;
 
     fn item(command: Command, label: &str, shortcut: Option<&str>) -> MenuItem {
         let accelerator = shortcut.and_then(|s| s.parse::<Accelerator>().ok());
@@ -156,32 +157,36 @@ mod mac {
             "Import",
             true,
             &[
-                &item(Command::ImportCurl, "cURL Command…", None),
-                &item(Command::ImportFile, "OpenAPI or Postman File…", None),
-                &item(Command::ImportBruno, "Bruno Folder…", None),
-                &item(Command::ImportDocs, "API Docs URL…", None),
+                &item(Command::ImportCurl, labels::IMPORT_CURL, None),
+                &item(Command::ImportFile, labels::IMPORT_FILE, None),
+                &item(Command::ImportBruno, labels::IMPORT_BRUNO, None),
+                &item(Command::ImportDocs, labels::IMPORT_DOCS, None),
             ],
         )?;
         let export = Submenu::with_items(
             "Export",
             true,
-            &[&item(Command::ExportPostman, "Postman Collection…", None)],
+            &[&item(Command::ExportPostman, labels::EXPORT_POSTMAN, None)],
         )?;
         let file = Submenu::with_items(
             "File",
             true,
             &[
-                &item(Command::NewRequest, "New Request", Some("CmdOrCtrl+N")),
-                &item(Command::NewFolder, "New Folder…", None),
+                &item(
+                    Command::NewRequest,
+                    labels::NEW_REQUEST,
+                    Some("CmdOrCtrl+N"),
+                ),
+                &item(Command::NewFolder, labels::NEW_FOLDER, None),
                 &item(
                     Command::NewCollection,
-                    "New Collection…",
+                    labels::NEW_COLLECTION,
                     Some("CmdOrCtrl+Shift+N"),
                 ),
                 &PredefinedMenuItem::separator(),
                 &item(
                     Command::OpenCollection,
-                    "Open Collection…",
+                    labels::OPEN_COLLECTION,
                     Some("CmdOrCtrl+O"),
                 ),
                 &import,
@@ -195,10 +200,10 @@ mod mac {
             "Collection",
             true,
             &[
-                &item(Command::Reload, "Reload", Some("CmdOrCtrl+R")),
-                &item(Command::RenameCollection, "Rename…", None),
+                &item(Command::Reload, labels::RELOAD, Some("CmdOrCtrl+R")),
+                &item(Command::RenameCollection, labels::RENAME, None),
                 &PredefinedMenuItem::separator(),
-                &item(Command::TrashCollection, "Move to Trash…", None),
+                &item(Command::TrashCollection, labels::TRASH, None),
             ],
         )?;
         let window = Submenu::with_items(

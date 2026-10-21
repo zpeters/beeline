@@ -157,8 +157,8 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
             ))
             .push(
                 row![
-                    theme::button("Open collection…").on_press(Action::OpenCollection),
-                    theme::button("New collection…").on_press(Action::NewCollection),
+                    theme::button(crate::labels::OPEN_COLLECTION).on_press(Action::OpenCollection),
+                    theme::button(crate::labels::NEW_COLLECTION).on_press(Action::NewCollection),
                 ]
                 .spacing(6),
             );

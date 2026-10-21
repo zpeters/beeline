@@ -13,6 +13,7 @@ mod highlight;
 mod history;
 mod http;
 mod import;
+mod labels;
 mod menu;
 mod model;
 mod query;
