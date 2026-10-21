@@ -8,7 +8,7 @@ use super::{Imported, Item};
 use crate::model::{Body, BodyKind, KeyValue, RequestFile};
 use crate::query;
 
-const METHODS: [&str; 7] = ["get", "post", "put", "patch", "delete", "head", "options"];
+pub(super) const METHODS: [&str; 7] = ["get", "post", "put", "patch", "delete", "head", "options"];
 
 /// Reads `text` as JSON, or as YAML when it is not JSON.
 pub fn read(text: &str) -> Result<Value, String> {
@@ -216,7 +216,7 @@ fn first_example(examples: &Value) -> Option<&Value> {
 }
 
 /// An example value as row text: strings as written, other JSON as JSON.
-fn example_text(v: Option<&Value>) -> String {
+pub(super) fn example_text(v: Option<&Value>) -> String {
     match v {
         None | Some(Value::Null) => String::new(),
         Some(Value::String(s)) => s.clone(),
@@ -225,7 +225,7 @@ fn example_text(v: Option<&Value>) -> String {
 }
 
 /// Follows `$ref`s within the document, a few levels deep.
-fn deref<'a>(doc: &'a Value, mut v: &'a Value) -> &'a Value {
+pub(super) fn deref<'a>(doc: &'a Value, mut v: &'a Value) -> &'a Value {
     for _ in 0..8 {
         match v
             .get("$ref")

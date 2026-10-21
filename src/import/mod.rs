@@ -9,6 +9,7 @@ pub mod insomnia;
 pub mod openapi;
 pub mod opencollection;
 pub mod postman;
+pub mod swagger;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -55,6 +56,9 @@ pub fn write(root: &Path, imported: &Imported) -> Result<(PathBuf, usize), Strin
 /// Reads an API file and parses it as whichever format it is.
 pub fn parse_file(text: &str) -> Result<Imported, String> {
     let doc = openapi::read(text)?;
+    if swagger::is_swagger(&doc) {
+        return swagger::parse(&doc);
+    }
     if openapi::is_openapi(&doc) {
         return openapi::parse(&doc);
     }

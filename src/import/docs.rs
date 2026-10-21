@@ -276,6 +276,13 @@ mod tests {
 
     #[test]
     #[ignore = "needs the internet"]
+    fn live_httpbin_swagger2_imports() {
+        let imported = fetch("https://httpbin.org/", Duration::from_secs(30)).unwrap();
+        assert!(imported.items.len() > 10, "{}", imported.items.len());
+    }
+
+    #[test]
+    #[ignore = "needs the internet"]
     fn live_https_spec_imports() {
         let url = "https://petstore3.swagger.io/api/v3/openapi.json";
         let imported = fetch(url, Duration::from_secs(30)).unwrap();
@@ -284,18 +291,18 @@ mod tests {
 
     #[test]
     fn fetch_reports_why_the_spec_it_found_was_refused() {
-        let swagger2 =
-            r#"{"swagger": "2.0", "info": {"title": "Old", "version": "1"}, "paths": {}}"#;
+        let unsupported =
+            r#"{"openapi": "4.0.0", "info": {"title": "Future", "version": "1"}, "paths": {}}"#;
         let base = serve(vec![
             (
                 "/docs",
                 "text/html",
                 r#"<script>fetch("/spec.json")</script>"#,
             ),
-            ("/spec.json", "application/json", swagger2),
+            ("/spec.json", "application/json", unsupported),
         ]);
         let err = fetch(&format!("{base}/docs"), Duration::from_secs(5)).unwrap_err();
-        assert!(err.contains("Swagger 2.0"), "{err}");
+        assert!(err.contains("Unsupported OpenAPI version"), "{err}");
     }
 
     #[test]
