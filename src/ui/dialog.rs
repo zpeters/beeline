@@ -36,6 +36,8 @@ pub enum Msg {
     CurlEdit(text_editor::Action),
     CurlCopy,
     CurlImport,
+    DocsUrl(String),
+    DocsImport,
 }
 
 /// Puts a dimmed backdrop behind `content`, centred.
@@ -186,6 +188,34 @@ pub fn curl_preview(command: &str) -> Element<'_, Msg> {
         .spacing(12)
         .into(),
     )
+}
+
+/// A docs page or spec URL. Import fetches it and looks for the spec.
+pub fn import_docs<'a>(url: &'a str, busy: bool, error: Option<&'a str>) -> Element<'a, Msg> {
+    let mut col = column![
+        text("Import from API docs").size(theme::heading_px()),
+        text("Paste the URL of an API docs page, or of its OpenAPI spec. The page must link to the spec."),
+        theme::text_input("https://docs.example.com/api", url)
+            .on_input(Msg::DocsUrl)
+            .on_submit(Msg::DocsImport)
+            .width(Fill),
+    ]
+    .spacing(12);
+    if busy {
+        col = col.push(text("Fetching…").style(text::secondary));
+    }
+    if let Some(error) = error {
+        col = col.push(text(error).style(text::danger));
+    }
+    let can_import = !busy && !url.trim().is_empty();
+    col = col.push(
+        row![
+            theme::button("Import").on_press_maybe(can_import.then_some(Msg::DocsImport)),
+            theme::button("Cancel").on_press(Msg::Cancel),
+        ]
+        .spacing(8),
+    );
+    overlay(col.into())
 }
 
 /// Paste a curl command; Import turns it into a request.

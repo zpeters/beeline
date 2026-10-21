@@ -216,6 +216,12 @@ enum Modal {
     Delete(PathBuf),
     /// The curl preview: the exact command for the active request.
     Curl(String),
+    /// The API docs dialog: a page or spec URL, and the fetch in progress.
+    ImportDocs {
+        url: String,
+        busy: bool,
+        error: Option<String>,
+    },
     /// The curl paste dialog. Its text lives in `App::curl_paste`.
     ImportCurl {
         error: Option<String>,
@@ -309,6 +315,8 @@ pub enum Message {
     /// a curl command, ready to copy.
     ShowCurl,
     Sent(u64, u64, response::Sent),
+    /// The API docs fetch finished: the spec it found, or why it failed.
+    DocsFetched(Result<import::Imported, String>),
     CloseRequested(window::Id),
     CursorMoved(Point),
     MouseReleased,
@@ -979,6 +987,13 @@ impl App {
                     }
                 }
             }
+            Action::ImportDocs => {
+                self.modal = Some(Modal::ImportDocs {
+                    url: String::new(),
+                    busy: false,
+                    error: None,
+                });
+            }
             Action::ImportCurl => {
                 self.curl_paste = text_editor::Content::new();
                 self.modal = Some(Modal::ImportCurl { error: None });
@@ -1206,6 +1221,10 @@ impl App {
                 Some(id) if self.modal.is_none() => self.close_tab(id),
                 _ => Task::none(),
             },
+            Message::DocsFetched(result) => {
+                self.docs_fetched(result);
+                Task::none()
+            }
             Message::Sent(id, generation, sent) => {
                 // A tab closed or cancelled since the send drops its response.
                 if let Some(doc) = self.docs.iter_mut().find(|d| d.id == id)
@@ -1303,6 +1322,51 @@ impl App {
                 );
             }
             Err(e) => self.notify(e, true),
+        }
+    }
+
+    /// Fetches the docs URL in the dialog on a plain thread, so the blocking
+    /// HTTP calls stay off the UI executor. A second press while a fetch is
+    /// running does nothing.
+    fn start_docs_import(&mut self) -> Task<Message> {
+        let timeout = self.settings.timeout();
+        let Some(Modal::ImportDocs { url, busy, error }) = &mut self.modal else {
+            return Task::none();
+        };
+        if *busy || url.trim().is_empty() {
+            return Task::none();
+        }
+        *busy = true;
+        *error = None;
+        let url = url.trim().to_string();
+        let (tx, rx) = iced::futures::channel::oneshot::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(import::docs::fetch(&url, timeout));
+        });
+        Task::perform(
+            async move {
+                rx.await
+                    .unwrap_or_else(|_| Err("fetch thread stopped".into()))
+            },
+            Message::DocsFetched,
+        )
+    }
+
+    /// Imports the spec a docs fetch found, or shows why it found none.
+    fn docs_fetched(&mut self, result: Result<import::Imported, String>) {
+        match result {
+            Ok(imported) => {
+                self.modal = None;
+                if let Some(root) = self.collection.as_ref().map(|c| c.root.clone()) {
+                    self.finish_import(&root, Ok(imported));
+                }
+            }
+            Err(e) => {
+                if let Some(Modal::ImportDocs { busy, error, .. }) = &mut self.modal {
+                    *busy = false;
+                    *error = Some(e);
+                }
+            }
         }
     }
 
@@ -1599,6 +1663,13 @@ impl App {
                 self.import_curl();
                 Task::none()
             }
+            dialog::Msg::DocsUrl(text) => {
+                if let Some(Modal::ImportDocs { url, .. }) = &mut self.modal {
+                    *url = text;
+                }
+                Task::none()
+            }
+            dialog::Msg::DocsImport => self.start_docs_import(),
             dialog::Msg::SettingsSave => {
                 self.settings_save();
                 Task::none()
@@ -1654,6 +1725,7 @@ impl App {
             Command::ImportCurl
             | Command::ImportFile
             | Command::ImportBruno
+            | Command::ImportDocs
             | Command::ExportPostman
             | Command::Reload
                 if root.is_none() =>
@@ -1663,6 +1735,7 @@ impl App {
             Command::ImportCurl => self.sidebar_action(Action::ImportCurl),
             Command::ImportFile => self.sidebar_action(Action::ImportFile),
             Command::ImportBruno => self.sidebar_action(Action::ImportBruno),
+            Command::ImportDocs => self.sidebar_action(Action::ImportDocs),
             Command::ExportPostman => self.sidebar_action(Action::ExportPostman),
             Command::Reload => self.sidebar_action(Action::Reload),
             Command::RenameCollection => match root {
@@ -1985,6 +2058,10 @@ impl App {
                 sidebar::Action::ExportPostman,
             ));
             items.push(item(
+                "Import from API docs URL…".into(),
+                sidebar::Action::ImportDocs,
+            ));
+            items.push(item(
                 "Rename…".into(),
                 sidebar::Action::RenameCollection(root.to_path_buf()),
             ));
@@ -2141,6 +2218,9 @@ impl App {
                 error,
             } => dialog::settings(draft, timeout, error.as_deref()).map(Message::Dialog),
             Modal::Curl(command) => dialog::curl_preview(command).map(Message::Dialog),
+            Modal::ImportDocs { url, busy, error } => {
+                dialog::import_docs(url, *busy, error.as_deref()).map(Message::Dialog)
+            }
             Modal::ImportCurl { error } => {
                 dialog::import_curl(&self.curl_paste, error.as_deref()).map(Message::Dialog)
             }

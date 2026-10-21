@@ -63,6 +63,26 @@ pub fn send(req: &Resolved, timeout: Duration) -> Result<Response, String> {
     })
 }
 
+/// GETs `url` and returns the body as text. Used to fetch API docs and their
+/// specs, not user requests, so a 400 or more is an error here.
+pub fn get_text(url: &str, timeout: Duration) -> Result<String, String> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .timeout_global(Some(timeout))
+        .build()
+        .into();
+    let mut resp = agent.get(url).call().map_err(|e| e.to_string())?;
+    let status = resp.status().as_u16();
+    if status >= 400 {
+        return Err(format!("{url} returned HTTP {status}"));
+    }
+    resp.body_mut()
+        .with_config()
+        .limit(MAX_BODY)
+        .read_to_string()
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::{BufRead, BufReader, Read, Write};
