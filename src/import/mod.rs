@@ -3,6 +3,8 @@
 
 pub mod bruno;
 pub mod curl;
+pub mod har;
+pub mod insomnia;
 pub mod openapi;
 pub mod opencollection;
 pub mod postman;
@@ -58,7 +60,13 @@ pub fn parse_file(text: &str) -> Result<Imported, String> {
     if postman::is_postman(&doc) {
         return postman::parse(&doc);
     }
-    Err("Not an OpenAPI 3 spec or a Postman collection".into())
+    if har::is_har(&doc) {
+        return har::parse(&doc);
+    }
+    if insomnia::is_insomnia(&doc) {
+        return insomnia::parse(&doc);
+    }
+    Err("Not an OpenAPI 3 spec, Postman collection, HAR file or Insomnia export".into())
 }
 
 /// Reads a Bruno folder, whichever of its formats it is:
@@ -335,6 +343,19 @@ mod tests {
         let postman = parse_file(r#"{"info": {"name": "B"}, "item": []}"#).unwrap();
         assert_eq!(postman.name, "B");
         assert!(parse_file(r#"{"hello": 1}"#).is_err());
+    }
+
+    #[test]
+    fn parse_file_reads_har_and_insomnia_exports() {
+        let har = parse_file(include_str!("../../fixtures/import/har/shop-session.har")).unwrap();
+        assert_eq!(har.name, "shop.example.test");
+        assert_eq!(har.items.len(), 5);
+        let insomnia = parse_file(include_str!(
+            "../../fixtures/import/insomnia/shop-export.json"
+        ))
+        .unwrap();
+        assert_eq!(insomnia.name, "Shop");
+        assert_eq!(insomnia.items.len(), 4);
     }
 
     #[test]

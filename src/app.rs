@@ -944,8 +944,8 @@ impl App {
                 if let Some(c) = &self.collection {
                     let root = c.root.clone();
                     let picked = rfd::FileDialog::new()
-                        .set_title("Import an OpenAPI or Postman file")
-                        .add_filter("API file", &["json", "yaml", "yml"])
+                        .set_title("Import an OpenAPI, Postman, Insomnia or HAR file")
+                        .add_filter("API file", &["json", "yaml", "yml", "har"])
                         .pick_file();
                     if let Some(file) = picked {
                         self.import_file(&root, &file);

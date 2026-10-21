@@ -204,7 +204,7 @@ fn form_body(text: &str) -> Body {
 
 /// "GET users 42" from GET https://api.test/users/42?x=1. The host stands in
 /// when the path is empty.
-fn name_for(method: &str, url: &str) -> String {
+pub(super) fn name_for(method: &str, url: &str) -> String {
     let parsed = url::Url::parse(url).ok();
     let path = parsed
         .as_ref()
