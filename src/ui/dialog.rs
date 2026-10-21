@@ -106,6 +106,23 @@ pub fn settings<'a>(
     if let Some(error) = error {
         col = col.push(text(error).style(text::danger));
     }
+    // The About lines come from Cargo.toml, so the version has one source.
+    col = col.push(
+        column![
+            text(format!(
+                "beeline {} · {}",
+                env!("CARGO_PKG_VERSION"),
+                env!("CARGO_PKG_LICENSE")
+            ))
+            .size(theme::small_px())
+            .style(theme::muted),
+            text(env!("CARGO_PKG_REPOSITORY"))
+                .size(theme::small_px())
+                .style(theme::muted),
+        ]
+        .spacing(2)
+        .padding(iced::Padding::from([8, 0])),
+    );
     let buttons = row![
         theme::button("Save").on_press(Msg::SettingsSave),
         theme::button("Cancel").on_press(Msg::Cancel),
