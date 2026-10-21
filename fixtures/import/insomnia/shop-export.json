@@ -1,0 +1,73 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-10-01T09:00:00.000Z",
+  "__export_source": "synthetic",
+  "resources": [
+    {"_id": "wrk_shop", "_type": "workspace", "name": "Shop"},
+    {"_id": "fld_orders", "_type": "request_group", "parentId": "wrk_shop", "name": "Orders"},
+    {"_id": "fld_archive", "_type": "request_group", "parentId": "fld_orders", "name": "Archive"},
+    {
+      "_id": "req_list",
+      "_type": "request",
+      "parentId": "fld_orders",
+      "name": "List orders",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/orders?limit=20",
+      "parameters": [
+        {"name": "limit", "value": "20"},
+        {"name": "debug", "value": "1", "disabled": true}
+      ],
+      "headers": [
+        {"name": "Accept", "value": "application/json"},
+        {"name": "X-Trace", "value": "off", "disabled": true}
+      ],
+      "body": {},
+      "authentication": {"type": "bearer", "token": "{{ _.token }}"}
+    },
+    {
+      "_id": "req_create",
+      "_type": "request",
+      "parentId": "fld_orders",
+      "name": "Create order",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/orders",
+      "headers": [{"name": "Content-Type", "value": "application/json"}],
+      "body": {"mimeType": "application/json", "text": "{\"sku\":\"A1\",\"qty\":2}"},
+      "authentication": {}
+    },
+    {
+      "_id": "req_old",
+      "_type": "request",
+      "parentId": "fld_archive",
+      "name": "Old search",
+      "method": "GET",
+      "url": "{{ _.base_url }}/search",
+      "body": {},
+      "authentication": {"type": "basic", "username": "demo", "password": "secret"}
+    },
+    {
+      "_id": "req_login",
+      "_type": "request",
+      "parentId": "wrk_shop",
+      "name": "Login",
+      "method": "POST",
+      "url": "{{ _.base_url }}/login",
+      "body": {
+        "mimeType": "application/x-www-form-urlencoded",
+        "params": [
+          {"name": "user", "value": "demo"},
+          {"name": "pass", "value": "secret"}
+        ]
+      },
+      "authentication": {}
+    },
+    {
+      "_id": "env_base",
+      "_type": "environment",
+      "parentId": "wrk_shop",
+      "name": "Base Environment",
+      "data": {"base_url": "https://shop.example.test"}
+    }
+  ]
+}

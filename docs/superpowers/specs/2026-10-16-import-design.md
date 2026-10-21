@@ -12,7 +12,13 @@
 ## Builder's calls
 
 - **Entry point:** the collection menu gets Import cURL…, Import file…
-  (OpenAPI or Postman, detected from the content) and Import Bruno folder….
+  (OpenAPI, Postman, Insomnia export or HAR, detected from the content) and
+  Import Bruno folder…. Insomnia and HAR were added in issue #7.
+- **HAR** makes one request per entry, all at the top level of a folder named
+  after the first entry's host. Pseudo-headers are dropped, and a bearer or
+  basic Authorization header moves to the Auth tab.
+- **Insomnia** exports (format 4) keep the workspace as the folder and the
+  request groups as nested folders. `{{ _.name }}` becomes `{{name}}`.
 - **cURL** makes one request, so it lands at the collection's top level, not
   in a folder of its own. It is named from its method and path.
 - **Folder names** come from the source: the API title, the Postman
