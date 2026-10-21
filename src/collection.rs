@@ -4,6 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::export::Entry;
 use crate::model::{Environment, RequestFile, to_json};
 
 /// Reserved folder at the collection root; not shown in the request tree.
@@ -101,6 +102,29 @@ pub fn validate_name(name: &str) -> Result<&str, String> {
 pub fn read_request(path: &Path) -> Result<RequestFile, String> {
     let text = fs::read_to_string(path).map_err(|e| err("read", path, e))?;
     serde_json::from_str(&text).map_err(|e| err("parse", path, e))
+}
+
+/// The tree as export entries, with every request read from its file.
+pub fn read_entries(nodes: &[Node]) -> Result<Vec<Entry>, String> {
+    nodes
+        .iter()
+        .map(|node| match node {
+            Node::Folder { name, children, .. } => Ok(Entry::Folder {
+                name: name.clone(),
+                items: read_entries(children)?,
+            }),
+            Node::Request { name, path, .. } => Ok(Entry::Request {
+                name: name.clone(),
+                req: read_request(path)?,
+            }),
+        })
+        .collect()
+}
+
+/// Writes an exported file. Unlike a request, it is not a collection file,
+/// so it is written in place rather than through a temp file.
+pub fn write_export(path: &Path, text: &str) -> Result<(), String> {
+    fs::write(path, text).map_err(|e| err("write", path, e))
 }
 
 /// Write via a temp file and rename, so a crash never leaves half a file.
@@ -283,6 +307,41 @@ pub fn moved(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_entries_mirrors_the_tree_with_each_request_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let orders = create_folder(dir.path(), "Orders").unwrap();
+        touch(&orders.join("list.json"), r#"{"url": "https://x/list"}"#);
+        touch(
+            &dir.path().join("health.json"),
+            r#"{"url": "https://x/health"}"#,
+        );
+        let nodes = scan(dir.path()).unwrap();
+        let entries = read_entries(&nodes).unwrap();
+        assert_eq!(
+            entries,
+            vec![
+                Entry::Folder {
+                    name: "Orders".into(),
+                    items: vec![Entry::Request {
+                        name: "list".into(),
+                        req: RequestFile {
+                            url: "https://x/list".into(),
+                            ..RequestFile::default()
+                        },
+                    }],
+                },
+                Entry::Request {
+                    name: "health".into(),
+                    req: RequestFile {
+                        url: "https://x/health".into(),
+                        ..RequestFile::default()
+                    },
+                },
+            ]
+        );
+    }
 
     #[test]
     fn duplicate_writes_a_copy_with_a_free_name() {

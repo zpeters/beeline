@@ -55,6 +55,8 @@ pub enum Action {
     ImportFile,
     /// Picks a Bruno collection folder to import.
     ImportBruno,
+    /// Saves the open collection as a Postman v2.1 file.
+    ExportPostman,
     /// Moves an environment file to the Trash.
     DeleteEnv(PathBuf),
     /// Opens a collection picked from the recents list.

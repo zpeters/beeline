@@ -6,6 +6,7 @@
 mod app;
 mod collection;
 mod curl;
+mod export;
 mod format;
 mod highlight;
 mod history;

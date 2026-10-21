@@ -17,9 +17,10 @@ use iced::{Element, Fill, FillPortion, Point, Subscription, Task, Theme, event, 
 use serde::{Deserialize, Serialize};
 
 use crate::collection::{self, Node};
+use crate::export::postman;
 use crate::history::History;
 use crate::menu;
-use crate::model::{Environment, KeyValue, RequestFile};
+use crate::model::{Environment, KeyValue, RequestFile, to_json};
 use crate::recents;
 use crate::settings::{self, Settings};
 use crate::spark::{self, Series};
@@ -964,6 +965,20 @@ impl App {
                     }
                 }
             }
+            Action::ExportPostman => {
+                if let Some(c) = &self.collection {
+                    let root = c.root.clone();
+                    let name = collection::stem(&root);
+                    let picked = rfd::FileDialog::new()
+                        .set_title("Export as a Postman collection")
+                        .set_file_name(format!("{name}.postman_collection.json"))
+                        .add_filter("Postman collection", &["json"])
+                        .save_file();
+                    if let Some(file) = picked {
+                        self.export_postman(&root, &file);
+                    }
+                }
+            }
             Action::ImportCurl => {
                 self.curl_paste = text_editor::Content::new();
                 self.modal = Some(Modal::ImportCurl { error: None });
@@ -1268,6 +1283,27 @@ impl App {
             .map_err(|e| format!("Could not read {}: {e}", file.display()))
             .and_then(|text| import::parse_file(&text));
         self.finish_import(root, result);
+    }
+
+    /// Writes the open collection, read fresh from disk, to `file` as a
+    /// Postman v2.1 collection.
+    fn export_postman(&mut self, root: &Path, file: &Path) {
+        let result = collection::scan(root).and_then(|nodes| {
+            let entries = collection::read_entries(&nodes)?;
+            let doc = postman::collection(&collection::stem(root), &entries);
+            collection::write_export(file, &to_json(&doc))?;
+            Ok(collection::request_count(&nodes))
+        });
+        match result {
+            Ok(count) => {
+                let noun = if count == 1 { "request" } else { "requests" };
+                self.notify(
+                    format!("Exported {count} {noun} to \"{}\"", collection::stem(file)),
+                    false,
+                );
+            }
+            Err(e) => self.notify(e, true),
+        }
     }
 
     /// Writes a parsed import into a new folder and shows it open in the tree.
@@ -1615,7 +1651,11 @@ impl App {
                 Some(root) => self.sidebar_action(Action::NewFolder(root)),
                 None => needs_collection(self),
             },
-            Command::ImportCurl | Command::ImportFile | Command::ImportBruno | Command::Reload
+            Command::ImportCurl
+            | Command::ImportFile
+            | Command::ImportBruno
+            | Command::ExportPostman
+            | Command::Reload
                 if root.is_none() =>
             {
                 needs_collection(self)
@@ -1623,6 +1663,7 @@ impl App {
             Command::ImportCurl => self.sidebar_action(Action::ImportCurl),
             Command::ImportFile => self.sidebar_action(Action::ImportFile),
             Command::ImportBruno => self.sidebar_action(Action::ImportBruno),
+            Command::ExportPostman => self.sidebar_action(Action::ExportPostman),
             Command::Reload => self.sidebar_action(Action::Reload),
             Command::RenameCollection => match root {
                 Some(root) => self.sidebar_action(Action::RenameCollection(root)),
@@ -1938,6 +1979,10 @@ impl App {
             items.push(item(
                 "Import Bruno folder…".into(),
                 sidebar::Action::ImportBruno,
+            ));
+            items.push(item(
+                "Export as Postman collection…".into(),
+                sidebar::Action::ExportPostman,
             ));
             items.push(item(
                 "Rename…".into(),
