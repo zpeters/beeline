@@ -7,14 +7,22 @@ name: Release
 # the files are uploaded to it instead (replacing any with the same name).
 #
 # "Run workflow" on the Actions tab does the same for a tag that already
-# exists. A pull request that changes this file runs the build jobs only,
-# so the workflow can be tested before a tag needs it.
+# exists. A pull request that changes this file, or anything the builds
+# depend on, runs the build jobs only, so the workflow can be tested before
+# a tag needs it.
 
 on:
   push:
     tags: ["v*"]
   pull_request:
-    paths: [".github/workflows/release.yml"]
+    paths:
+      - ".github/workflows/release.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "justfile"
+      - "src/**"
+      - "assets/icon/**"
   workflow_dispatch:
     inputs:
       tag:
@@ -93,6 +101,7 @@ jobs:
   windows:
     needs: version
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
