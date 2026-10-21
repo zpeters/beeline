@@ -55,6 +55,8 @@ pub enum Action {
     ImportFile,
     /// Picks a Bruno collection folder to import.
     ImportBruno,
+    /// Opens the dialog for an API docs URL to import from.
+    ImportDocs,
     /// Saves the open collection as a Postman v2.1 file.
     ExportPostman,
     /// Moves an environment file to the Trash.

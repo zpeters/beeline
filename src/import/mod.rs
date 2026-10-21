@@ -3,6 +3,7 @@
 
 pub mod bruno;
 pub mod curl;
+pub mod docs;
 pub mod har;
 pub mod insomnia;
 pub mod openapi;

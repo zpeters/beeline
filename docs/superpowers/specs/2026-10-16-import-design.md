@@ -19,6 +19,13 @@
   basic Authorization header moves to the Auth tab.
 - **Insomnia** exports (format 4) keep the workspace as the folder and the
   request groups as nested folders. `{{ _.name }}` becomes `{{name}}`.
+- **API docs URL** (issue #5): beeline fetches the page and looks for an
+  OpenAPI spec. It takes a `spec-url` attribute (Redoc), a spec named in a
+  script (`url: "./openapi.yaml"` or `const x = "…/openapi.json"`), or a
+  link to a `.json` or `.yaml` file whose name says it is a spec. The first
+  spec that parses is imported. A URL that is itself a spec is imported
+  directly. Pages that compute their spec URL in JavaScript (the Swagger UI
+  and Redoc templates) are not supported, because nothing runs the script.
 - **cURL** makes one request, so it lands at the collection's top level, not
   in a folder of its own. It is named from its method and path.
 - **Folder names** come from the source: the API title, the Postman

@@ -24,3 +24,7 @@ Sample files for the import parsers, read by the tests in `src/import/`.
   written for these tests: nested request groups, `{{ _.var }}` variables,
   disabled rows, bearer and basic auth, JSON and form bodies, and an
   environment that is skipped.
+- `docs/*.html` — synthetic docs pages for the API docs import (issue #5):
+  a Swagger UI page with a `url:` setting, a Redoc page with a `spec-url`
+  attribute, a guide with plain links (one of them a spec), and a page with
+  no spec. Hosts are `example.test`.

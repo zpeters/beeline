@@ -24,6 +24,7 @@ pub enum Command {
     ImportCurl,
     ImportFile,
     ImportBruno,
+    ImportDocs,
     ExportPostman,
     Save,
     CloseTab,
@@ -34,7 +35,7 @@ pub enum Command {
 
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 impl Command {
-    const ALL: [Command; 14] = [
+    const ALL: [Command; 15] = [
         Command::Settings,
         Command::NewRequest,
         Command::NewFolder,
@@ -43,6 +44,7 @@ impl Command {
         Command::ImportCurl,
         Command::ImportFile,
         Command::ImportBruno,
+        Command::ImportDocs,
         Command::ExportPostman,
         Command::Save,
         Command::CloseTab,
@@ -62,6 +64,7 @@ impl Command {
             Command::ImportCurl => "import-curl",
             Command::ImportFile => "import-file",
             Command::ImportBruno => "import-bruno",
+            Command::ImportDocs => "import-docs",
             Command::ExportPostman => "export-postman",
             Command::Save => "save",
             Command::CloseTab => "close-tab",
@@ -156,6 +159,7 @@ mod mac {
                 &item(Command::ImportCurl, "cURL Command…", None),
                 &item(Command::ImportFile, "OpenAPI or Postman File…", None),
                 &item(Command::ImportBruno, "Bruno Folder…", None),
+                &item(Command::ImportDocs, "API Docs URL…", None),
             ],
         )?;
         let export = Submenu::with_items(
