@@ -140,7 +140,7 @@ pub fn view<'a>(p: Props<'a>) -> Element<'a, Action> {
     .width(Fill)
     .on_press(Action::ToggleCollectionMenu);
     let mut header = row![name].align_y(iced::Center);
-    if p.root.is_some() && !cfg!(target_os = "macos") {
+    if p.root.is_some() {
         header = header.push(
             theme::button(text("⋯").size(theme::heading_px()))
                 .style(theme::text_button)
