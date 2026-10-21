@@ -133,9 +133,16 @@ jj describe -m 'Message'
 jj bookmark set main -r @
 ```
 
-This is a personal project: **merge locally, never push feature
-branches or open PRs.** `jj git push --bookmark main` when a unit of
-work is done and green.
+Work that is not tied to a GitHub issue: **merge locally.** Move `main`
+and `jj git push --bookmark main` when the unit of work is done and
+green. Do not push feature branches for it.
+
+Work tied to a GitHub issue (the project is out of dev and released):
+**open a PR on GitHub.** Push a feature bookmark to `github`
+(`jj git push --remote github --bookmark <name>`), open a PR that says
+`Closes #<n>` in its body, and approve and merge it on GitHub. Do not
+merge such work to `main` locally. Then `jj git fetch --remote github`
+and push `main` to `origin`, so `origin` follows GitHub.
 
 ## Testing expectations
 
