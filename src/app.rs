@@ -2040,11 +2040,6 @@ impl App {
                 sidebar::Action::SwitchCollection(recent.clone()),
             ));
         }
-        // On macOS Open and New live in the File menu, so this menu only
-        // chooses a collection.
-        if cfg!(target_os = "macos") {
-            return popup(items, at);
-        }
         if !self.recents.is_empty() {
             items.push(text("").into());
         }
