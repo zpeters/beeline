@@ -20,6 +20,7 @@ use crate::browser;
 use crate::collection::{self, Node};
 use crate::export::postman;
 use crate::history::History;
+use crate::labels;
 use crate::menu;
 use crate::model::{Environment, KeyValue, RequestFile, to_json};
 use crate::recents;
@@ -2044,11 +2045,11 @@ impl App {
             items.push(text("").into());
         }
         items.push(item(
-            "Open collection…".into(),
+            labels::OPEN_COLLECTION.into(),
             sidebar::Action::OpenCollection,
         ));
         items.push(item(
-            "New collection…".into(),
+            labels::NEW_COLLECTION.into(),
             sidebar::Action::NewCollection,
         ));
         popup(items, at)
@@ -2060,31 +2061,37 @@ impl App {
         let mut items: Vec<Element<'_, Message>> = Vec::new();
         if let Some(c) = &self.collection {
             let root = c.root.as_path();
-            items.push(item("Reload".into(), sidebar::Action::Reload));
-            items.push(item("Import cURL…".into(), sidebar::Action::ImportCurl));
+            items.push(section_label("Collection"));
+            items.push(item(labels::RELOAD.into(), sidebar::Action::Reload));
             items.push(item(
-                "Import OpenAPI or Postman file…".into(),
-                sidebar::Action::ImportFile,
-            ));
-            items.push(item(
-                "Import Bruno folder…".into(),
-                sidebar::Action::ImportBruno,
-            ));
-            items.push(item(
-                "Export as Postman collection…".into(),
-                sidebar::Action::ExportPostman,
-            ));
-            items.push(item(
-                "Import from API docs URL…".into(),
-                sidebar::Action::ImportDocs,
-            ));
-            items.push(item(
-                "Rename…".into(),
+                labels::RENAME.into(),
                 sidebar::Action::RenameCollection(root.to_path_buf()),
             ));
             items.push(item(
-                "Move to Trash…".into(),
+                labels::TRASH.into(),
                 sidebar::Action::DeleteCollection(root.to_path_buf()),
+            ));
+            items.push(section_label("Import"));
+            items.push(item(
+                labels::IMPORT_CURL.into(),
+                sidebar::Action::ImportCurl,
+            ));
+            items.push(item(
+                labels::IMPORT_FILE.into(),
+                sidebar::Action::ImportFile,
+            ));
+            items.push(item(
+                labels::IMPORT_BRUNO.into(),
+                sidebar::Action::ImportBruno,
+            ));
+            items.push(item(
+                labels::IMPORT_DOCS.into(),
+                sidebar::Action::ImportDocs,
+            ));
+            items.push(section_label("Export"));
+            items.push(item(
+                labels::EXPORT_POSTMAN.into(),
+                sidebar::Action::ExportPostman,
             ));
         }
         popup(items, at)
@@ -2104,8 +2111,14 @@ impl App {
         };
         popup(
             vec![
-                item("New request…", sidebar::Action::NewRequest(c.root.clone())),
-                item("New folder…", sidebar::Action::NewFolder(c.root.clone())),
+                item(
+                    labels::NEW_REQUEST,
+                    sidebar::Action::NewRequest(c.root.clone()),
+                ),
+                item(
+                    labels::NEW_FOLDER,
+                    sidebar::Action::NewFolder(c.root.clone()),
+                ),
             ],
             at,
         )
@@ -2314,6 +2327,22 @@ fn drag_ghost_layer(name: String, at: Point) -> Element<'static, Message> {
 }
 
 /// One row of a sidebar menu.
+/// A heading inside a sidebar menu, styled like the sidebar's section labels.
+fn section_label<'a>(label: &'static str) -> Element<'a, Message> {
+    container(
+        text(label)
+            .size(theme::small_px() - 2.0)
+            .style(theme::muted),
+    )
+    .padding(iced::Padding {
+        top: 6.0,
+        right: 0.0,
+        bottom: 2.0,
+        left: 8.0,
+    })
+    .into()
+}
+
 fn menu_item<'a>(label: String, action: sidebar::Action) -> Element<'a, Message> {
     theme::button(
         text(label)
