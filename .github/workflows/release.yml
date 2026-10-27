@@ -21,6 +21,7 @@ on:
       - "Cargo.lock"
       - "build.rs"
       - "justfile"
+      - "packaging/**"
       - "src/**"
       - "assets/icon/**"
   workflow_dispatch:
@@ -112,10 +113,16 @@ jobs:
         with:
           tool: just
       - run: just bundle-win
+      - run: just installer-win
       - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: dist/*.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-installer
+          path: dist/*-setup.exe
           if-no-files-found: error
 
   release:
@@ -140,7 +147,8 @@ jobs:
 
           **Linux (x86_64):** unpack the archive and run `beeline`.
 
-          **Windows (x86_64):** unzip it and run `beeline.exe`. The exe is not
+          **Windows (x86_64):** run the `-setup.exe` to install beeline for your
+          user, or unzip the `.zip` and run `beeline.exe`. The files are not
           signed yet, so SmartScreen may warn: choose More info → Run anyway.
           EOF
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
