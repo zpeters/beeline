@@ -269,7 +269,12 @@ pub fn delete(what: String) -> Element<'static, Msg> {
     )
 }
 
-pub fn env<'a>(name: &'a str, rows: &'a [KeyValue], dirty: bool) -> Element<'a, Msg> {
+pub fn env<'a>(
+    name: &'a str,
+    rows: &'a [KeyValue],
+    editors: &'a [kv::Row],
+    dirty: bool,
+) -> Element<'a, Msg> {
     let save = theme::button("Save").on_press_maybe(dirty.then_some(Msg::EnvSave));
     let close = theme::button(if dirty { "Discard" } else { "Close" }).on_press(Msg::EnvClose);
     let trash = theme::button("Move to Trash…")
@@ -280,7 +285,8 @@ pub fn env<'a>(name: &'a str, rows: &'a [KeyValue], dirty: bool) -> Element<'a, 
             text(format!("Environment: {name}")).size(theme::heading_px()),
             text("Use {{name}} in the URL, params, headers, body and auth.")
                 .size(theme::small_px()),
-            scrollable(kv::view(rows, false).map(Msg::EnvKv)).height(Length::Fixed(360.0)),
+            scrollable(kv::view(rows, editors, false, None).map(Msg::EnvKv))
+                .height(Length::Fixed(360.0)),
             row![save, close, space::horizontal().width(Fill), trash].spacing(8),
         ]
         .spacing(12)

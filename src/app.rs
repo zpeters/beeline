@@ -109,6 +109,8 @@ struct EnvEditor {
     name: String,
     path: PathBuf,
     rows: Vec<KeyValue>,
+    /// One key/value editor per row. Kept in step with `rows` by `kv`.
+    editors: Vec<kv::Row>,
     saved: Vec<KeyValue>,
 }
 
@@ -153,6 +155,8 @@ struct Doc {
     saved: RequestFile,
     /// The body's text, which iced edits in place. `req.body.text` mirrors it.
     body: text_editor::Content,
+    /// The single-line fields' editors: URL, params, headers, auth and vars.
+    fields: editor::Fields,
     tab: editor::Tab,
     /// True while this request is in flight.
     pending: bool,
@@ -173,6 +177,7 @@ impl Doc {
         Self {
             id,
             body: text_editor::Content::with_text(&req.body.text),
+            fields: editor::Fields::new(&req),
             req,
             open,
             saved,
@@ -193,6 +198,7 @@ impl Doc {
     fn replace_req(&mut self, req: RequestFile) {
         self.body = text_editor::Content::with_text(&req.body.text);
         self.req = req;
+        self.fields.sync(&self.req);
     }
 }
 
@@ -596,11 +602,14 @@ impl App {
         match collection::read_env(&path) {
             Ok(env) => {
                 let rows = env_rows(&env);
+                let mut editors = Vec::new();
+                kv::sync_rows(&rows, &mut editors);
                 self.env_editor = Some(EnvEditor {
                     name,
                     path,
                     saved: rows.clone(),
                     rows,
+                    editors,
                 });
             }
             Err(e) => self.notify(e, true),
@@ -1288,7 +1297,7 @@ impl App {
                 Task::none()
             }
             other => {
-                if editor::update(&mut doc.req, &mut doc.tab, other) {
+                if editor::update(&mut doc.req, &mut doc.fields, &mut doc.tab, other) {
                     self.send()
                 } else {
                     Task::none()
@@ -1614,7 +1623,7 @@ impl App {
             }
             dialog::Msg::EnvKv(msg) => {
                 if let Some(editor) = &mut self.env_editor {
-                    kv::update(&mut editor.rows, msg);
+                    kv::update(&mut editor.rows, &mut editor.editors, msg);
                 }
                 Task::none()
             }
@@ -1834,7 +1843,10 @@ impl App {
         let mut layers: Vec<Element<'_, Message>> = vec![base];
         if let Some(editor) = &self.env_editor {
             let env_dirty = editor.rows != editor.saved;
-            layers.push(dialog::env(&editor.name, &editor.rows, env_dirty).map(Message::Dialog));
+            layers.push(
+                dialog::env(&editor.name, &editor.rows, &editor.editors, env_dirty)
+                    .map(Message::Dialog),
+            );
         }
         if let Some((name, at)) = self.drag_ghost() {
             layers.push(drag_ghost_layer(name, at));
@@ -1948,6 +1960,7 @@ impl App {
                 doc.pending,
                 &resolve::effective(&doc.req, &self.vars),
                 &doc.body,
+                &doc.fields,
             )
             .map(Message::Editor),
         ]

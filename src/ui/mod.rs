@@ -3,6 +3,7 @@
 
 pub mod dialog;
 pub mod editor;
+pub mod field;
 pub mod highlight;
 pub mod kv;
 pub mod response;

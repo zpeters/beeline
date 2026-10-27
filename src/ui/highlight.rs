@@ -1,6 +1,7 @@
-//! JSON syntax colours for `text_editor`, on top of the pure tokenizer in
-//! `crate::highlight`.
+//! JSON syntax colours and `{{variable}}` colours for `text_editor`, on top
+//! of the pure tokenizer in `crate::highlight`.
 
+use std::collections::BTreeSet;
 use std::ops::Range;
 
 use iced::advanced::text::highlighter::{self, Format};
@@ -8,27 +9,34 @@ use iced::{Color, Font, Theme};
 
 use crate::highlight::{self as json, Token};
 
-/// Colours JSON when its setting is true; otherwise colours nothing, so
-/// one editor type serves both JSON and plain text.
+/// What to colour. `json` turns on JSON colours. `vars` turns on
+/// `{{name}}` colours: the names that have a value. `None` leaves
+/// variables plain, as in a response.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Settings {
+    pub json: bool,
+    pub vars: Option<BTreeSet<String>>,
+}
+
 pub struct Json {
-    on: bool,
+    settings: Settings,
     current: usize,
 }
 
 impl highlighter::Highlighter for Json {
-    type Settings = bool;
+    type Settings = Settings;
     type Highlight = Token;
     type Iterator<'a> = std::vec::IntoIter<(Range<usize>, Token)>;
 
-    fn new(on: &bool) -> Self {
+    fn new(settings: &Settings) -> Self {
         Self {
-            on: *on,
+            settings: settings.clone(),
             current: 0,
         }
     }
 
-    fn update(&mut self, on: &bool) {
-        self.on = *on;
+    fn update(&mut self, settings: &Settings) {
+        self.settings = settings.clone();
         self.current = 0;
     }
 
@@ -38,10 +46,13 @@ impl highlighter::Highlighter for Json {
 
     fn highlight_line(&mut self, line: &str) -> Self::Iterator<'_> {
         self.current += 1;
-        if self.on {
-            json::line(line).into_iter()
-        } else {
-            Vec::new().into_iter()
+        let json = self.settings.json;
+        match &self.settings.vars {
+            Some(names) => {
+                json::line_with_vars(line, json, |name| names.contains(name)).into_iter()
+            }
+            None if json => json::line(line).into_iter(),
+            None => Vec::new().into_iter(),
         }
     }
 
@@ -63,6 +74,8 @@ pub fn format(token: &Token, theme: &Theme) -> Format<Font> {
         Token::Number => pick([181, 93, 0], [240, 163, 94]),
         Token::Literal => pick([142, 68, 173], [199, 146, 234]),
         Token::Punct => theme.palette().text.scale_alpha(0.55),
+        Token::VarOk => pick([46, 125, 50], [143, 209, 143]),
+        Token::VarMissing => pick([198, 40, 40], [255, 123, 123]),
     };
     Format {
         color: Some(color),
