@@ -79,6 +79,16 @@ install-win: bundle-win
     $lnk.Save(); \
     "Installed $dir\beeline.exe"
 
+# Build a Windows setup program, dist/beeline-<version>-windows-x86_64-setup.exe.
+# It installs for this user only (no admin rights) and adds an uninstaller.
+# Needs NSIS (makensis) on PATH.
+[windows]
+installer-win:
+    cargo build --release
+    New-Item -ItemType Directory -Force dist | Out-Null; \
+    makensis /DVERSION={{version}} packaging/windows/beeline.nsi; \
+    "dist/beeline-{{version}}-windows-x86_64-setup.exe"
+
 # Render the app icon PNGs, the README banner and the GitHub social
 # preview from their SVG sources.
 # The banner's wordmark needs the Futura font (it ships with macOS).
