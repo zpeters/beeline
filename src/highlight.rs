@@ -6,6 +6,8 @@
 
 use std::ops::Range;
 
+use crate::vars;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Token {
     /// An object key: a string followed by a colon.
@@ -16,6 +18,10 @@ pub enum Token {
     Literal,
     /// Braces, brackets, commas and colons.
     Punct,
+    /// A `{{name}}` that has a value.
+    VarOk,
+    /// A `{{name}}` that has no value.
+    VarMissing,
 }
 
 /// The tokens of one line, as byte ranges in order. Whitespace and
@@ -69,12 +75,102 @@ pub fn line(text: &str) -> Vec<(Range<usize>, Token)> {
     out
 }
 
+/// Like `line`, but each `{{name}}` gets its own token: `VarOk` when
+/// `defined` says the name has a value, `VarMissing` when not. A variable
+/// token replaces any JSON token it overlaps. With `json` false, only the
+/// variables are coloured. Ranges are sorted and do not overlap.
+pub fn line_with_vars(
+    text: &str,
+    json: bool,
+    defined: impl Fn(&str) -> bool,
+) -> Vec<(Range<usize>, Token)> {
+    let mut classes: Vec<Option<Token>> = vec![None; text.len()];
+    if json {
+        for (range, token) in line(text) {
+            classes[range].fill(Some(token));
+        }
+    }
+    for (range, name) in vars::spans(text) {
+        let token = if defined(name) {
+            Token::VarOk
+        } else {
+            Token::VarMissing
+        };
+        classes[range].fill(Some(token));
+    }
+    // Join neighbouring bytes of one class into one range. Every boundary
+    // is a token boundary, so each range starts and ends on a char boundary.
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < classes.len() {
+        let Some(token) = classes[i] else {
+            i += 1;
+            continue;
+        };
+        let start = i;
+        while i < classes.len() && classes[i] == Some(token) {
+            i += 1;
+        }
+        out.push((start..i, token));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn kinds(text: &str) -> Vec<(&str, Token)> {
         line(text).into_iter().map(|(r, t)| (&text[r], t)).collect()
+    }
+
+    fn var_kinds(text: &str, json: bool) -> Vec<(&str, Token)> {
+        line_with_vars(text, json, |name| name == "id")
+            .into_iter()
+            .map(|(r, t)| (&text[r], t))
+            .collect()
+    }
+
+    #[test]
+    fn variable_in_json_string_splits_the_string() {
+        assert_eq!(
+            var_kinds(r#""/users/{{id}}/x""#, true),
+            vec![
+                (r#""/users/"#, Token::String),
+                ("{{id}}", Token::VarOk),
+                (r#"/x""#, Token::String),
+            ]
+        );
+    }
+
+    #[test]
+    fn undefined_variable_is_missing() {
+        assert_eq!(
+            var_kinds("{{nope}}", false),
+            vec![("{{nope}}", Token::VarMissing)]
+        );
+    }
+
+    #[test]
+    fn plain_text_colours_only_variables() {
+        assert_eq!(
+            var_kinds("a {{id}} b", false),
+            vec![("{{id}}", Token::VarOk)]
+        );
+    }
+
+    #[test]
+    fn variable_outside_a_string_keeps_json_tokens() {
+        assert_eq!(
+            var_kinds("[{{id}}, 1]", true),
+            vec![
+                ("[", Token::Punct),
+                ("{{id}}", Token::VarOk),
+                (",", Token::Punct),
+                ("1", Token::Number),
+                ("]", Token::Punct),
+            ]
+        );
     }
 
     #[test]

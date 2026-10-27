@@ -1,6 +1,7 @@
 //! `{{name}}` interpolation.
 
 use std::collections::BTreeMap;
+use std::ops::Range;
 
 /// Replace every `{{name}}` (whitespace inside the braces is allowed)
 /// with its value. Unknown names and unclosed braces are left as written,
@@ -28,22 +29,41 @@ pub fn interpolate(input: &str, vars: &BTreeMap<String, String>) -> String {
 /// Names in `{{...}}` that `vars` does not define, in order of first use.
 pub fn missing(input: &str, vars: &BTreeMap<String, String>) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
-    let mut rest = input;
-    while let Some(start) = rest.find("{{") {
-        let after = &rest[start + 2..];
-        let Some(end) = after.find("}}") else { break };
-        let name = after[..end].trim();
+    for (_, name) in spans(input) {
         if !vars.contains_key(name) && !names.iter().any(|n| n == name) {
             names.push(name.to_string());
         }
-        rest = &after[end + 2..];
     }
     names
+}
+
+/// Each `{{name}}` in `input`: its byte range, braces included, and its
+/// trimmed name. In order. An unclosed `{{` ends the list.
+pub fn spans(input: &str) -> Vec<(Range<usize>, &str)> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(start) = input[from..].find("{{").map(|i| from + i) {
+        let name_start = start + 2;
+        let Some(end) = input[name_start..].find("}}").map(|i| name_start + i) else {
+            break;
+        };
+        out.push((start..end + 2, input[name_start..end].trim()));
+        from = end + 2;
+    }
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spans_give_range_and_trimmed_name() {
+        assert_eq!(
+            spans("a {{ id }}/{{base}} {{open"),
+            vec![(2..10, "id"), (11..19, "base")]
+        );
+    }
 
     #[test]
     fn lists_missing_names_once() {

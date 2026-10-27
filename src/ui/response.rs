@@ -158,7 +158,13 @@ pub fn view<'a>(
                     .font(theme::mono())
                     .on_action(Msg::Edit)
                     .height(Fill)
-                    .highlight_with::<highlight::Json>(view.is_json, highlight::format),
+                    .highlight_with::<highlight::Json>(
+                        highlight::Settings {
+                            json: view.is_json,
+                            vars: None,
+                        },
+                        highlight::format,
+                    ),
             )
             .height(Fill)
             .into()
